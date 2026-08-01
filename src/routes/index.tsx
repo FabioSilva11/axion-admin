@@ -1,24 +1,56 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useServerFn } from "@tanstack/react-start";
+import { Toaster } from "sonner";
 
-// No head() here: the home route inherits title/description/og/twitter from
-// __root.tsx, and ships no og:image so serve-time hosting can inject the
-// project's social preview (explicit og:image or latest screenshot).
+import { AdminShell } from "@/components/admin/AdminShell";
+import { LoginScreen } from "@/components/admin/LoginScreen";
+import { adminMe } from "@/lib/admin.functions";
+
 export const Route = createFileRoute("/")({
-  component: Index,
+  head: () => ({
+    meta: [
+      { title: "Axion Admin — Painel de administração" },
+      {
+        name: "description",
+        content:
+          "Painel administrativo do aplicativo Axion: gerencie usuários, planos, modelos, provedores e chaves do banco de dados.",
+      },
+      { property: "og:title", content: "Axion Admin — Painel de administração" },
+      {
+        property: "og:description",
+        content: "Gerencie usuários, planos, modelos e chaves do aplicativo Axion em um só lugar.",
+      },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary_large_image" },
+      { name: "robots", content: "noindex, nofollow" },
+    ],
+  }),
+  component: AdminPage,
 });
 
-// IMPORTANT: Replace this placeholder. See ./README.md for routing conventions.
-function Index() {
+function AdminPage() {
+  const me = useServerFn(adminMe);
+  const queryClient = useQueryClient();
+  const { data, isLoading } = useQuery({ queryKey: ["admin-me"], queryFn: () => me() });
+
+  if (isLoading) {
+    return <div className="min-h-screen bg-background" />;
+  }
+
   return (
-    <div
-      className="flex min-h-screen items-center justify-center"
-      style={{ backgroundColor: "#fcfbf8" }}
-    >
-      <img
-        data-lovable-blank-page-placeholder="REMOVE_THIS"
-        src="https://cdn.gpteng.co/blank-app-v1.svg"
-        alt="Your app will live here!"
-      />
-    </div>
+    <>
+      <Toaster theme="dark" position="top-right" />
+      {data?.username ? (
+        <AdminShell
+          username={data.username}
+          onLogout={() => queryClient.invalidateQueries({ queryKey: ["admin-me"] })}
+        />
+      ) : (
+        <LoginScreen
+          onSuccess={() => queryClient.invalidateQueries({ queryKey: ["admin-me"] })}
+        />
+      )}
+    </>
   );
 }
