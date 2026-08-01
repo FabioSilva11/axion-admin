@@ -1,0 +1,67 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+    "axionSettings": {
+      "config": {
+        "models": { ".read": true },
+        "providers": { ".read": false, ".write": false },
+        "$other": { ".read": false, ".write": false }
+      },
+      "private": { ".read": false, ".write": false },
+      "$other": { ".read": false, ".write": false }
+    },
+    "config": {
+      "api": { ".read": true },
+      "cli-proxy": { ".read": true },
+      "plans": { ".read": true },
+      "$other": { ".read": false, ".write": false }
+    },
+    "users": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        "uid": {
+          ".write": "auth != null && auth.uid === $uid && (!data.exists() || data.val() === newData.val())",
+          ".validate": "newData.isString() && newData.val() === $uid"
+        },
+        "name": {
+          ".write": "auth != null && auth.uid === $uid",
+          ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 120"
+        },
+        "email": {
+          ".write": "auth != null && auth.uid === $uid && (!data.exists() || data.val() === newData.val())",
+          ".validate": "newData.isString() && newData.val().length <= 254 && (auth.token.email == null || newData.val() === auth.token.email)"
+        },
+        "photoUrl": {
+          ".write": "auth != null && auth.uid === $uid",
+          ".validate": "!newData.exists() || (newData.isString() && newData.val().length <= 2048)"
+        },
+        "createdAt": {
+          ".write": "auth != null && auth.uid === $uid && !data.exists()",
+          ".validate": "newData.isNumber() && newData.val() <= now"
+        },
+        "lastLoginAt": {
+          ".write": "auth != null && auth.uid === $uid",
+          ".validate": "newData.isNumber() && newData.val() <= now"
+        },
+        "welcomeShown": {
+          ".write": "auth != null && auth.uid === $uid",
+          ".validate": "newData.isBoolean()"
+        },
+        "plan": {
+          ".write": "auth != null && auth.uid === $uid && ((!data.exists() && newData.val() === 'free') || data.val() === newData.val())",
+          ".validate": "newData.val() === 'free' || newData.val() === 'paid'"
+        },
+        "subscription": { ".write": false },
+        "managedUsage": { ".write": false },
+        "serverRequests": { ".write": false },
+        "serverLedger": { ".write": false },
+        "$other": { ".write": false }
+      }
+    },
+    "$other": {
+      ".read": false,
+      ".write": false
+    }
+  }
+}

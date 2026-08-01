@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { Activity, Users, Layers, Cpu, Server, Loader2 } from "lucide-react";
+import { Activity, Users, Layers, Cpu, Server, Loader2, CreditCard } from "lucide-react";
 
 import { getOverview } from "@/lib/admin.functions";
 
@@ -42,14 +42,17 @@ export function OverviewSection() {
     <section className="space-y-6">
       <header>
         <h2 className="text-xl font-semibold tracking-tight">Visão geral</h2>
-        <p className="text-sm text-muted-foreground">Resumo em tempo real do banco de dados Axion.</p>
+        <p className="text-sm text-muted-foreground">
+          Resumo em tempo real do banco de dados Axion.
+        </p>
       </header>
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
         <StatCard label="Usuários" value={data.totals.users} icon={Users} />
         <StatCard label="Planos" value={data.totals.plans} icon={Layers} />
         <StatCard label="Modelos" value={data.totals.models} icon={Cpu} />
         <StatCard label="Provedores" value={data.totals.providers} icon={Server} />
+        <StatCard label="Pagamentos" value={data.totals.payments} icon={CreditCard} />
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
@@ -86,7 +89,10 @@ export function OverviewSection() {
                     <span className="text-muted-foreground tabular-nums">{count}</span>
                   </div>
                   <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-secondary">
-                    <div className="accent-surface h-full rounded-full" style={{ width: `${percent}%` }} />
+                    <div
+                      className="accent-surface h-full rounded-full"
+                      style={{ width: `${percent}%` }}
+                    />
                   </div>
                 </li>
               );
@@ -99,7 +105,10 @@ export function OverviewSection() {
         <h3 className="border-b border-border p-5 text-sm font-semibold">Últimos usuários</h3>
         <div className="divide-y divide-border">
           {data.recentUsers.map((user) => (
-            <div key={user.uid} className="flex flex-wrap items-center justify-between gap-2 p-4 text-sm">
+            <div
+              key={user.uid}
+              className="flex flex-wrap items-center justify-between gap-2 p-4 text-sm"
+            >
               <div className="min-w-0">
                 <p className="font-medium">{user.name}</p>
                 <p className="truncate text-xs text-muted-foreground">{user.email}</p>

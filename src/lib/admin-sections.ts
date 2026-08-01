@@ -7,6 +7,8 @@ export type SectionDef = {
   kind: SectionKind;
   description: string;
   icon: "users" | "plans" | "models" | "providers" | "payment" | "api" | "proxy";
+  allowCreate?: boolean;
+  allowDelete?: boolean;
 };
 
 export const SECTIONS: SectionDef[] = [
@@ -17,11 +19,13 @@ export const SECTIONS: SectionDef[] = [
     kind: "collection",
     description: "Contas registradas no aplicativo Axion",
     icon: "users",
+    allowCreate: false,
+    allowDelete: false,
   },
   {
     key: "plans",
     label: "Planos",
-    path: "axionServer/config/plans",
+    path: "config/plans",
     kind: "collection",
     description: "Planos, créditos e preços",
     icon: "plans",
@@ -29,23 +33,41 @@ export const SECTIONS: SectionDef[] = [
   {
     key: "models",
     label: "Modelos",
-    path: "axionServer/config/models",
+    path: "axionSettings/config/models",
     kind: "collection",
-    description: "Modelos de IA disponíveis e seus pesos",
+    description: "Modelos de IA, preços e plano mínimo",
     icon: "models",
   },
   {
     key: "providers",
     label: "Provedores",
-    path: "axionServer/config/providers",
+    path: "axionSettings/config/providers",
     kind: "collection",
     description: "Endpoints e chaves de API dos provedores",
     icon: "providers",
   },
   {
+    key: "billing",
+    label: "Cobrança da IA",
+    path: "axionSettings/private/billing",
+    kind: "single",
+    description: "Conversão de custos dos provedores em créditos",
+    icon: "payment",
+  },
+  {
+    key: "payments",
+    label: "Pagamentos",
+    path: "axionSettings/private/payments",
+    kind: "collection",
+    description: "Orders Pix, conciliação e ativação das assinaturas",
+    icon: "payment",
+    allowCreate: false,
+    allowDelete: false,
+  },
+  {
     key: "mercadoPago",
     label: "Mercado Pago",
-    path: "axionServer/private/mercadoPago",
+    path: "axionSettings/private/mercadoPago",
     kind: "single",
     description: "Chaves privadas de pagamento",
     icon: "payment",

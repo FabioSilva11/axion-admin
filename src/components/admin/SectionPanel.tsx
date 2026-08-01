@@ -4,7 +4,14 @@ import { useServerFn } from "@tanstack/react-start";
 import { Loader2, Plus, Save, Trash2, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 
-import { deleteRecord, getSectionData, saveRecord } from "@/lib/admin.functions";
+import {
+  adjustUserCredits,
+  deleteRecord,
+  getSectionData,
+  saveRecord,
+  setUserPlan,
+  synchronizePayment,
+} from "@/lib/admin.functions";
 import type { SectionDef } from "@/lib/admin-sections";
 
 function previewFields(json: string) {
@@ -75,7 +82,7 @@ export function SectionPanel({ section }: { section: SectionDef }) {
             <RefreshCw className={`size-3.5 ${isFetching ? "animate-spin" : ""}`} />
             Atualizar
           </button>
-          {!isSingle ? (
+          {!isSingle && section.allowCreate !== false ? (
             <button
               onClick={() => setEditing({ id: "", json: "{\n  \n}", isNew: true })}
               className="accent-surface inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold transition hover:opacity-90"
@@ -100,7 +107,9 @@ export function SectionPanel({ section }: { section: SectionDef }) {
       ) : (
         <div className="grid gap-3">
           {(data?.records ?? []).length === 0 ? (
-            <div className="panel p-6 text-sm text-muted-foreground">Nenhum registro nesta seção.</div>
+            <div className="panel p-6 text-sm text-muted-foreground">
+              Nenhum registro nesta seção.
+            </div>
           ) : null}
           {(data?.records ?? []).map((record) => (
             <article key={record.id} className="panel p-4">
@@ -115,6 +124,11 @@ export function SectionPanel({ section }: { section: SectionDef }) {
                       </div>
                     ))}
                   </dl>
+                  <RecordQuickActions
+                    section={section.key}
+                    recordId={record.id}
+                    json={record.json}
+                  />
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
                   <button
@@ -129,17 +143,19 @@ export function SectionPanel({ section }: { section: SectionDef }) {
                   >
                     {editing?.id === record.id && !editing.isNew ? "Fechar" : "Editar"}
                   </button>
-                  <button
-                    onClick={() => {
-                      if (confirm(`Remover "${record.id}" definitivamente?`)) {
-                        deleteMutation.mutate(record.id);
-                      }
-                    }}
-                    className="rounded-lg border border-destructive/40 px-2.5 py-1.5 text-destructive transition hover:bg-destructive/10"
-                    aria-label={`Remover ${record.id}`}
-                  >
-                    <Trash2 className="size-3.5" />
-                  </button>
+                  {section.allowDelete !== false ? (
+                    <button
+                      onClick={() => {
+                        if (confirm(`Remover "${record.id}" definitivamente?`)) {
+                          deleteMutation.mutate(record.id);
+                        }
+                      }}
+                      className="rounded-lg border border-destructive/40 px-2.5 py-1.5 text-destructive transition hover:bg-destructive/10"
+                      aria-label={`Remover ${record.id}`}
+                    >
+                      <Trash2 className="size-3.5" />
+                    </button>
+                  ) : null}
                 </div>
               </div>
 
@@ -178,6 +194,96 @@ export function SectionPanel({ section }: { section: SectionDef }) {
       )}
     </section>
   );
+}
+
+function RecordQuickActions({
+  section,
+  recordId,
+  json,
+}: {
+  section: string;
+  recordId: string;
+  json: string;
+}) {
+  const changePlan = useServerFn(setUserPlan);
+  const changeCredits = useServerFn(adjustUserCredits);
+  const syncPayment = useServerFn(synchronizePayment);
+  const queryClient = useQueryClient();
+  const mutation = useMutation({
+    mutationFn: async (action: "free" | "paid" | "credit" | "sync") => {
+      if (action === "sync") {
+        return syncPayment({ data: { checkoutId: recordId } });
+      }
+      if (action === "credit") {
+        return changeCredits({ data: { uid: recordId, delta: 1_000 } });
+      }
+      return changePlan({ data: { uid: recordId, planId: action } });
+    },
+    onSuccess: (result) => {
+      if (!result.ok) {
+        toast.error(result.error);
+        return;
+      }
+      toast.success("Operação concluída pelo servidor");
+      queryClient.invalidateQueries({ queryKey: ["section", section] });
+      queryClient.invalidateQueries({ queryKey: ["overview"] });
+    },
+    onError: () => toast.error("Não foi possível concluir a operação"),
+  });
+
+  if (section === "users") {
+    let plan = "free";
+    try {
+      plan = String((JSON.parse(json) as Record<string, unknown>)["plan"] ?? "free");
+    } catch {
+      // O editor JSON continuará mostrando o erro caso o registro seja inválido.
+    }
+    return (
+      <div className="mt-3 flex flex-wrap gap-2">
+        <button
+          disabled={mutation.isPending || plan === "free"}
+          onClick={() => mutation.mutate("free")}
+          className="rounded-lg border border-border px-2.5 py-1.5 text-xs disabled:opacity-40"
+        >
+          Tornar Free
+        </button>
+        <button
+          disabled={mutation.isPending || plan === "paid"}
+          onClick={() => {
+            if (confirm("Ativar o Plano Pago e reiniciar o ciclo deste usuário?")) {
+              mutation.mutate("paid");
+            }
+          }}
+          className="rounded-lg border border-primary/50 px-2.5 py-1.5 text-xs text-primary disabled:opacity-40"
+        >
+          Ativar Pago
+        </button>
+        <button
+          disabled={mutation.isPending}
+          onClick={() => mutation.mutate("credit")}
+          className="rounded-lg border border-accent/50 px-2.5 py-1.5 text-xs text-accent disabled:opacity-40"
+        >
+          +1.000 créditos
+        </button>
+      </div>
+    );
+  }
+
+  if (section === "payments") {
+    return (
+      <div className="mt-3">
+        <button
+          disabled={mutation.isPending}
+          onClick={() => mutation.mutate("sync")}
+          className="inline-flex items-center gap-2 rounded-lg border border-primary/50 px-2.5 py-1.5 text-xs text-primary disabled:opacity-40"
+        >
+          <RefreshCw className={mutation.isPending ? "size-3 animate-spin" : "size-3"} />
+          Consultar Mercado Pago
+        </button>
+      </div>
+    );
+  }
+  return null;
 }
 
 function RecordEditor({

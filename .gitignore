@@ -15,6 +15,14 @@ dist-ssr
 .tanstack/**
 .nitro
 *.local
+.env
+.env.*
+!.env.example
+
+# Segredos do Firebase Admin nunca podem entrar no Git.
+credencial firebase admin/
+*firebase-adminsdk*.json
+service-account*.json
 
 # Wrangler / Cloudflare
 .wrangler/

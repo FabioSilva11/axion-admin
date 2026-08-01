@@ -10,33 +10,142 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as HealthRouteImport } from './routes/health'
+import { Route as V1PlansRouteImport } from './routes/v1.plans'
+import { Route as V1UsageRouteImport } from './routes/v1.usage'
+import { Route as V1AccountBootstrapRouteImport } from './routes/v1.account.bootstrap'
+import { Route as V1PaymentsCheckoutRouteImport } from './routes/v1.payments.checkout'
+import { Route as V1PaymentsWebhookRouteImport } from './routes/v1.payments.webhook'
+import { Route as V1AiChatCompletionsRouteImport } from './routes/v1.ai.chat.completions'
+import { Route as V1PaymentsCheckoutsCheckoutIdRouteImport } from './routes/v1.payments.checkouts.$checkoutId'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const HealthRoute = HealthRouteImport.update({
+  id: '/health',
+  path: '/health',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const V1PlansRoute = V1PlansRouteImport.update({
+  id: '/v1/plans',
+  path: '/v1/plans',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const V1UsageRoute = V1UsageRouteImport.update({
+  id: '/v1/usage',
+  path: '/v1/usage',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const V1AccountBootstrapRoute = V1AccountBootstrapRouteImport.update({
+  id: '/v1/account/bootstrap',
+  path: '/v1/account/bootstrap',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const V1PaymentsCheckoutRoute = V1PaymentsCheckoutRouteImport.update({
+  id: '/v1/payments/checkout',
+  path: '/v1/payments/checkout',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const V1PaymentsWebhookRoute = V1PaymentsWebhookRouteImport.update({
+  id: '/v1/payments/webhook',
+  path: '/v1/payments/webhook',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const V1AiChatCompletionsRoute = V1AiChatCompletionsRouteImport.update({
+  id: '/v1/ai/chat/completions',
+  path: '/v1/ai/chat/completions',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const V1PaymentsCheckoutsCheckoutIdRoute =
+  V1PaymentsCheckoutsCheckoutIdRouteImport.update({
+    id: '/v1/payments/checkouts/$checkoutId',
+    path: '/v1/payments/checkouts/$checkoutId',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/health': typeof HealthRoute
+  '/v1/plans': typeof V1PlansRoute
+  '/v1/usage': typeof V1UsageRoute
+  '/v1/account/bootstrap': typeof V1AccountBootstrapRoute
+  '/v1/payments/checkout': typeof V1PaymentsCheckoutRoute
+  '/v1/payments/webhook': typeof V1PaymentsWebhookRoute
+  '/v1/ai/chat/completions': typeof V1AiChatCompletionsRoute
+  '/v1/payments/checkouts/$checkoutId': typeof V1PaymentsCheckoutsCheckoutIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/health': typeof HealthRoute
+  '/v1/plans': typeof V1PlansRoute
+  '/v1/usage': typeof V1UsageRoute
+  '/v1/account/bootstrap': typeof V1AccountBootstrapRoute
+  '/v1/payments/checkout': typeof V1PaymentsCheckoutRoute
+  '/v1/payments/webhook': typeof V1PaymentsWebhookRoute
+  '/v1/ai/chat/completions': typeof V1AiChatCompletionsRoute
+  '/v1/payments/checkouts/$checkoutId': typeof V1PaymentsCheckoutsCheckoutIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/health': typeof HealthRoute
+  '/v1/plans': typeof V1PlansRoute
+  '/v1/usage': typeof V1UsageRoute
+  '/v1/account/bootstrap': typeof V1AccountBootstrapRoute
+  '/v1/payments/checkout': typeof V1PaymentsCheckoutRoute
+  '/v1/payments/webhook': typeof V1PaymentsWebhookRoute
+  '/v1/ai/chat/completions': typeof V1AiChatCompletionsRoute
+  '/v1/payments/checkouts/$checkoutId': typeof V1PaymentsCheckoutsCheckoutIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/'
+  fullPaths:
+    | '/'
+    | '/health'
+    | '/v1/plans'
+    | '/v1/usage'
+    | '/v1/account/bootstrap'
+    | '/v1/payments/checkout'
+    | '/v1/payments/webhook'
+    | '/v1/ai/chat/completions'
+    | '/v1/payments/checkouts/$checkoutId'
   fileRoutesByTo: FileRoutesByTo
-  to: '/'
-  id: '__root__' | '/'
+  to:
+    | '/'
+    | '/health'
+    | '/v1/plans'
+    | '/v1/usage'
+    | '/v1/account/bootstrap'
+    | '/v1/payments/checkout'
+    | '/v1/payments/webhook'
+    | '/v1/ai/chat/completions'
+    | '/v1/payments/checkouts/$checkoutId'
+  id:
+    | '__root__'
+    | '/'
+    | '/health'
+    | '/v1/plans'
+    | '/v1/usage'
+    | '/v1/account/bootstrap'
+    | '/v1/payments/checkout'
+    | '/v1/payments/webhook'
+    | '/v1/ai/chat/completions'
+    | '/v1/payments/checkouts/$checkoutId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  HealthRoute: typeof HealthRoute
+  V1PlansRoute: typeof V1PlansRoute
+  V1UsageRoute: typeof V1UsageRoute
+  V1AccountBootstrapRoute: typeof V1AccountBootstrapRoute
+  V1PaymentsCheckoutRoute: typeof V1PaymentsCheckoutRoute
+  V1PaymentsWebhookRoute: typeof V1PaymentsWebhookRoute
+  V1AiChatCompletionsRoute: typeof V1AiChatCompletionsRoute
+  V1PaymentsCheckoutsCheckoutIdRoute: typeof V1PaymentsCheckoutsCheckoutIdRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -48,12 +157,86 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/health': {
+      id: '/health'
+      path: '/health'
+      fullPath: '/health'
+      preLoaderRoute: typeof HealthRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/v1/plans': {
+      id: '/v1/plans'
+      path: '/v1/plans'
+      fullPath: '/v1/plans'
+      preLoaderRoute: typeof V1PlansRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/v1/usage': {
+      id: '/v1/usage'
+      path: '/v1/usage'
+      fullPath: '/v1/usage'
+      preLoaderRoute: typeof V1UsageRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/v1/account/bootstrap': {
+      id: '/v1/account/bootstrap'
+      path: '/v1/account/bootstrap'
+      fullPath: '/v1/account/bootstrap'
+      preLoaderRoute: typeof V1AccountBootstrapRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/v1/payments/checkout': {
+      id: '/v1/payments/checkout'
+      path: '/v1/payments/checkout'
+      fullPath: '/v1/payments/checkout'
+      preLoaderRoute: typeof V1PaymentsCheckoutRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/v1/payments/webhook': {
+      id: '/v1/payments/webhook'
+      path: '/v1/payments/webhook'
+      fullPath: '/v1/payments/webhook'
+      preLoaderRoute: typeof V1PaymentsWebhookRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/v1/ai/chat/completions': {
+      id: '/v1/ai/chat/completions'
+      path: '/v1/ai/chat/completions'
+      fullPath: '/v1/ai/chat/completions'
+      preLoaderRoute: typeof V1AiChatCompletionsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/v1/payments/checkouts/$checkoutId': {
+      id: '/v1/payments/checkouts/$checkoutId'
+      path: '/v1/payments/checkouts/$checkoutId'
+      fullPath: '/v1/payments/checkouts/$checkoutId'
+      preLoaderRoute: typeof V1PaymentsCheckoutsCheckoutIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  HealthRoute: HealthRoute,
+  V1PlansRoute: V1PlansRoute,
+  V1UsageRoute: V1UsageRoute,
+  V1AccountBootstrapRoute: V1AccountBootstrapRoute,
+  V1PaymentsCheckoutRoute: V1PaymentsCheckoutRoute,
+  V1PaymentsWebhookRoute: V1PaymentsWebhookRoute,
+  V1AiChatCompletionsRoute: V1AiChatCompletionsRoute,
+  V1PaymentsCheckoutsCheckoutIdRoute: V1PaymentsCheckoutsCheckoutIdRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { startInstance } from './start.ts'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+    config: Awaited<ReturnType<typeof startInstance.getOptions>>
+  }
+}

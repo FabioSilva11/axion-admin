@@ -6,6 +6,9 @@ import { getCookie, setCookie, deleteCookie } from "@tanstack/react-start/server
 
 export const SESSION_COOKIE = "axion_admin_session";
 const MAX_AGE_SECONDS = 60 * 60 * 8;
+const MAX_LOGIN_FAILURES = 5;
+const LOGIN_WINDOW_MS = 15 * 60 * 1000;
+let loginFailures: number[] = [];
 
 function secret() {
   const value = process.env["ADMIN_SESSION_SECRET"];
@@ -35,10 +38,20 @@ function safeEqual(a: string, b: string) {
 }
 
 export async function verifyCredentials(username: string, password: string) {
+  const now = Date.now();
+  loginFailures = loginFailures.filter((time) => now - time < LOGIN_WINDOW_MS);
+  if (loginFailures.length >= MAX_LOGIN_FAILURES) {
+    throw new Error("Muitas tentativas de login. Aguarde 15 minutos.");
+  }
   const expectedUser = process.env["ADMIN_USERNAME"] ?? "";
   const expectedPass = process.env["ADMIN_PASSWORD"] ?? "";
-  if (!expectedUser || !expectedPass) throw new Error("Credenciais do admin não configuradas");
-  return safeEqual(username, expectedUser) && safeEqual(password, expectedPass);
+  if (!expectedUser || expectedPass.length < 20) {
+    throw new Error("Credenciais seguras do admin não configuradas");
+  }
+  const accepted = safeEqual(username, expectedUser) && safeEqual(password, expectedPass);
+  if (accepted) loginFailures = [];
+  else loginFailures.push(now);
+  return accepted;
 }
 
 export async function createSession(username: string) {
@@ -47,8 +60,8 @@ export async function createSession(username: string) {
   const token = `${payload}.${await sign(payload)}`;
   setCookie(SESSION_COOKIE, token, {
     httpOnly: true,
-    sameSite: "lax",
-    secure: true,
+    sameSite: "strict",
+    secure: process.env["NODE_ENV"] === "production",
     path: "/",
     maxAge: MAX_AGE_SECONDS,
   });
