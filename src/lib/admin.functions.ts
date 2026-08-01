@@ -1,25 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
-import { z } from "zod";
 
-import { findSection, SECTIONS } from "./admin-sections";
-
-const LoginInput = z.object({
-  username: z.string().trim().min(1).max(120),
-  password: z.string().min(1).max(200),
-});
-
-const SectionInput = z.object({ section: z.string().trim().min(1).max(60) });
-
-const RecordInput = z.object({
-  section: z.string().trim().min(1).max(60),
-  recordId: z.string().trim().max(200).optional(),
-  value: z.string().max(200_000),
-});
-
-const DeleteInput = z.object({
-  section: z.string().trim().min(1).max(60),
-  recordId: z.string().trim().min(1).max(200),
-});
+import { findSection } from "./admin-sections";
+import { DeleteInput, LoginInput, RecordInput, SectionInput } from "./admin-schemas";
 
 export const adminLogin = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => LoginInput.parse(input))
@@ -155,5 +137,3 @@ export const deleteRecord = createServerFn({ method: "POST" })
     await rtdbDelete(`${section.path}/${data.recordId}`);
     return { ok: true as const };
   });
-
-export const sectionKeys = SECTIONS.map((section) => section.key);
