@@ -98,14 +98,19 @@ export const getSectionData = createServerFn({ method: "POST" })
     const value = await rtdbGet<unknown>(section.path);
 
     if (section.kind === "single") {
-      return { kind: "single" as const, value: value ?? {}, records: [] };
+      return {
+        kind: "single" as const,
+        json: JSON.stringify(value ?? {}, null, 2),
+        records: [] as Array<{ id: string; json: string }>,
+      };
     }
-    const entries = Object.entries((value ?? {}) as Record<string, unknown>).map(([id, item]) => ({
+    const records = Object.entries((value ?? {}) as Record<string, unknown>).map(([id, item]) => ({
       id,
-      value: item,
+      json: JSON.stringify(item, null, 2),
     }));
-    return { kind: "collection" as const, value: null, records: entries };
+    return { kind: "collection" as const, json: "", records };
   });
+
 
 export const saveRecord = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => RecordInput.parse(input))
