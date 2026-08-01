@@ -77,12 +77,16 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Axion Admin" },
-      { name: "description", content: "Painel administrativo do aplicativo Axion." },
-      { property: "og:title", content: "Axion Admin" },
-      { property: "og:description", content: "Painel administrativo do aplicativo Axion." },
+      { title: "Axion Admin — Painel de administração" },
+      { name: "description", content: "Painel administrativo do aplicativo Axion: gerencie usuários, planos, modelos, provedores e chaves do banco de dados." },
+      { property: "og:title", content: "Axion Admin — Painel de administração" },
+      { property: "og:description", content: "Painel administrativo do aplicativo Axion: gerencie usuários, planos, modelos, provedores e chaves do banco de dados." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
+      { name: "twitter:title", content: "Axion Admin — Painel de administração" },
+      { name: "twitter:description", content: "Painel administrativo do aplicativo Axion: gerencie usuários, planos, modelos, provedores e chaves do banco de dados." },
+      { property: "og:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/cb736cb8-d3f0-406c-a2d9-99a5ee526a74/id-preview-1d310c6b--9ac218ab-eb3a-42fc-a3f3-ca5c7ca7e76b.lovable.app-1785550813173.png" },
+      { name: "twitter:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/cb736cb8-d3f0-406c-a2d9-99a5ee526a74/id-preview-1d310c6b--9ac218ab-eb3a-42fc-a3f3-ca5c7ca7e76b.lovable.app-1785550813173.png" },
     ],
     links: [
       {

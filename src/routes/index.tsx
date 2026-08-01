@@ -19,7 +19,7 @@ export const Route = createFileRoute("/")({
       { property: "og:title", content: "Axion Admin — Painel de administração" },
       {
         property: "og:description",
-        content: "Gerencie usuários, planos, modelos e chaves do aplicativo Axion em um só lugar.",
+        content: "Painel administrativo do aplicativo Axion: gerencie usuários, planos, modelos, provedores e chaves do banco de dados.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
