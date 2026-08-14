@@ -2,6 +2,51 @@ import "./lib/error-capture";
 
 import { consumeLastCapturedError } from "./lib/error-capture";
 import { renderErrorPage } from "./lib/error-page";
+import { rtdbPatch } from "./lib/firebase.server";
+import { startPaymentSynchronizer } from "./lib/payments.server";
+
+// Persistent Ubuntu deployments confirm Pix by polling Mercado Pago directly.
+startPaymentSynchronizer();
+
+// The Android app observes config/api, so an endpoint change is delivered without an APK update.
+const publicBaseUrl = (process.env["PUBLIC_BASE_URL"] ?? "").trim().replace(/\/+$/, "");
+const hasManagedPublicBaseUrl = publicBaseUrl.startsWith("https://");
+const cliProxyPublicUrl = (process.env["CLI_PROXY_PUBLIC_URL"] ?? "https://api-ia.axion-ide.online")
+  .trim()
+  .replace(/\/+$/, "");
+const publications: Array<Promise<unknown>> = [];
+
+if (hasManagedPublicBaseUrl) {
+  const panelEndpoint = {
+    endpoint: publicBaseUrl,
+    online: true,
+    source: "cloudflare_named_tunnel",
+    tunnelType: "named",
+    updatedAt: Date.now(),
+  };
+
+  publications.push(
+    rtdbPatch("config/api", panelEndpoint),
+    rtdbPatch("config/panel", panelEndpoint),
+  );
+}
+
+// The CLI Proxy is exposed by the same persistent named Cloudflare Tunnel.
+// Its hostname is stable, so no Quick Tunnel URL monitor or polling script is needed.
+if (cliProxyPublicUrl.startsWith("https://")) {
+  publications.push(rtdbPatch("config/cli-proxy", {
+    endpoint: cliProxyPublicUrl,
+    online: true,
+    source: "cloudflare_named_tunnel",
+    tunnelType: "named",
+    updatedAt: Date.now(),
+  }));
+}
+
+if (publications.length > 0) {
+  void Promise.all(publications)
+    .catch((error: unknown) => console.error("Falha ao publicar endpoints fixos no Firebase", error));
+}
 
 type ServerEntry = {
   fetch: (request: Request, env: unknown, ctx: unknown) => Promise<Response> | Response;

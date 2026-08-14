@@ -14,8 +14,11 @@ const integer = (value: unknown, fallback = 0) => {
 };
 
 export async function getPlan(planId: string) {
-  const normalized = planId === "paid" ? "paid" : planId === "free" ? "free" : "";
+  const normalized = planId.trim();
   if (!normalized) throw new HttpError(400, "invalid_plan", "Plano inválido.");
+  if (!/^[a-z0-9_-]{2,80}$/.test(normalized)) {
+    throw new HttpError(400, "invalid_plan", "Plano invalido.");
+  }
   const plan = await rtdbGet<JsonMap>(`config/plans/${normalized}`);
   if (!plan || plan["active"] === false) {
     throw new HttpError(404, "plan_not_found", "Plano indisponível.");
@@ -24,8 +27,8 @@ export async function getPlan(planId: string) {
 }
 
 export function planCredits(planId: string, plan: JsonMap) {
-  const key = planId === "paid" ? "monthly_credits" : "signup_credits";
-  return Math.max(1, integer(plan[key], planId === "paid" ? 25_000 : 1_000));
+  const key = planId === "free" ? "signup_credits" : "monthly_credits";
+  return Math.max(1, integer(plan[key], planId === "free" ? 1_000 : 25_000));
 }
 
 export function walletFromProfile(profile: JsonMap | null | undefined) {
@@ -47,6 +50,7 @@ export function walletFromProfile(profile: JsonMap | null | undefined) {
 
 export async function bootstrapUser(uid: string, email?: string, displayName?: string) {
   const freePlan = await getPlan("free");
+  const catalog = (await rtdbGet<Record<string, JsonMap>>("config/plans")) ?? {};
   const now = Date.now();
   const limit = planCredits("free", freePlan);
 
@@ -57,15 +61,19 @@ export async function bootstrapUser(uid: string, email?: string, displayName?: s
     if (!profile["name"] && displayName) profile["name"] = displayName;
     if (!profile["createdAt"]) profile["createdAt"] = now;
     const subscription = asMap(profile["subscription"]);
+    const requestedPlan = String(profile["plan"] ?? "free");
+    const selectedPlan = catalog[requestedPlan]?.["active"] !== false && catalog[requestedPlan]
+      ? requestedPlan
+      : "free";
     const paidExpired =
-      profile["plan"] === "paid" &&
+      selectedPlan !== "free" &&
       integer(subscription["periodEnd"], 0) > 0 &&
       integer(subscription["periodEnd"], 0) <= now;
-    const planId = profile["plan"] === "paid" && !paidExpired ? "paid" : "free";
+    const planId = selectedPlan !== "free" && !paidExpired ? selectedPlan : "free";
     profile["plan"] = planId;
     const usage = asMap(profile["managedUsage"]);
-    const effectiveLimit =
-      planId === "paid" ? Math.max(1, integer(usage["creditLimit"], 25_000)) : limit;
+    const currentPlan = catalog[planId] ?? freePlan;
+    const effectiveLimit = Math.max(1, integer(usage["creditLimit"], planCredits(planId, currentPlan)));
     const used = Math.min(effectiveLimit, Math.max(0, integer(usage["creditsUsed"], 0)));
     const reserved = Math.min(
       Math.max(0, effectiveLimit - used),
@@ -103,12 +111,12 @@ export async function reserveCredits(input: {
     throw new HttpError(400, "invalid_reservation", "Reserva de créditos inválida.");
   }
   const profile = await bootstrapUser(input.uid);
-  const planId = profile?.["plan"] === "paid" ? "paid" : "free";
+  const planId = String(profile?.["plan"] ?? "free");
   const plan = await getPlan(planId);
   const now = Date.now();
   const minuteStart = Math.floor(now / 60_000) * 60_000;
   const dayStart = Math.floor(now / 86_400_000) * 86_400_000;
-  const rpm = Math.max(1, integer(plan["requests_per_minute"], planId === "paid" ? 20 : 4));
+  const rpm = Math.max(1, integer(plan["requests_per_minute"], planId === "free" ? 4 : 20));
   const dailyLimit = Math.max(1, integer(plan["daily_credit_limit"], planCredits(planId, plan)));
   const reservationNonce = randomUUID();
   let duplicateStatus = "";
@@ -274,13 +282,14 @@ export async function activatePaidPlan(input: {
   checkoutId: string;
   orderId: string;
   amountCents: number;
+  planId: string;
 }) {
-  const plan = await getPlan("paid");
+  const plan = await getPlan(input.planId);
   const expected = Math.max(1, integer(plan["price_cents"], 0));
   if (input.amountCents !== expected) {
     throw new HttpError(409, "payment_amount_mismatch", "O valor pago não corresponde ao plano.");
   }
-  const limit = planCredits("paid", plan);
+  const limit = planCredits(input.planId, plan);
   const cycleDays = Math.max(1, integer(plan["cycle_days"], 30));
   const now = Date.now();
   const periodEnd = now + cycleDays * 86_400_000;
@@ -292,7 +301,7 @@ export async function activatePaidPlan(input: {
     if (subscription["checkoutId"] === input.checkoutId && subscription["status"] === "active") {
       return profile;
     }
-    profile["plan"] = "paid";
+    profile["plan"] = input.planId;
     Object.assign(subscription, {
       status: "active",
       source: "mercado_pago",

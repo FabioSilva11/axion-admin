@@ -11,11 +11,13 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as HealthRouteImport } from './routes/health'
+import { Route as ApiFilesRouteImport } from './routes/api.files'
 import { Route as V1PlansRouteImport } from './routes/v1.plans'
 import { Route as V1UsageRouteImport } from './routes/v1.usage'
+import { Route as ApiAnalyticsTrackRouteImport } from './routes/api.analytics.track'
 import { Route as V1AccountBootstrapRouteImport } from './routes/v1.account.bootstrap'
+import { Route as V1AiProvidersRouteImport } from './routes/v1.ai.providers'
 import { Route as V1PaymentsCheckoutRouteImport } from './routes/v1.payments.checkout'
-import { Route as V1PaymentsWebhookRouteImport } from './routes/v1.payments.webhook'
 import { Route as V1AiChatCompletionsRouteImport } from './routes/v1.ai.chat.completions'
 import { Route as V1PaymentsCheckoutsCheckoutIdRouteImport } from './routes/v1.payments.checkouts.$checkoutId'
 
@@ -29,6 +31,11 @@ const HealthRoute = HealthRouteImport.update({
   path: '/health',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiFilesRoute = ApiFilesRouteImport.update({
+  id: '/api/files',
+  path: '/api/files',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const V1PlansRoute = V1PlansRouteImport.update({
   id: '/v1/plans',
   path: '/v1/plans',
@@ -39,19 +46,24 @@ const V1UsageRoute = V1UsageRouteImport.update({
   path: '/v1/usage',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiAnalyticsTrackRoute = ApiAnalyticsTrackRouteImport.update({
+  id: '/api/analytics/track',
+  path: '/api/analytics/track',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const V1AccountBootstrapRoute = V1AccountBootstrapRouteImport.update({
   id: '/v1/account/bootstrap',
   path: '/v1/account/bootstrap',
   getParentRoute: () => rootRouteImport,
 } as any)
+const V1AiProvidersRoute = V1AiProvidersRouteImport.update({
+  id: '/v1/ai/providers',
+  path: '/v1/ai/providers',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const V1PaymentsCheckoutRoute = V1PaymentsCheckoutRouteImport.update({
   id: '/v1/payments/checkout',
   path: '/v1/payments/checkout',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const V1PaymentsWebhookRoute = V1PaymentsWebhookRouteImport.update({
-  id: '/v1/payments/webhook',
-  path: '/v1/payments/webhook',
   getParentRoute: () => rootRouteImport,
 } as any)
 const V1AiChatCompletionsRoute = V1AiChatCompletionsRouteImport.update({
@@ -69,22 +81,26 @@ const V1PaymentsCheckoutsCheckoutIdRoute =
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/health': typeof HealthRoute
+  '/api/files': typeof ApiFilesRoute
   '/v1/plans': typeof V1PlansRoute
   '/v1/usage': typeof V1UsageRoute
+  '/api/analytics/track': typeof ApiAnalyticsTrackRoute
   '/v1/account/bootstrap': typeof V1AccountBootstrapRoute
+  '/v1/ai/providers': typeof V1AiProvidersRoute
   '/v1/payments/checkout': typeof V1PaymentsCheckoutRoute
-  '/v1/payments/webhook': typeof V1PaymentsWebhookRoute
   '/v1/ai/chat/completions': typeof V1AiChatCompletionsRoute
   '/v1/payments/checkouts/$checkoutId': typeof V1PaymentsCheckoutsCheckoutIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/health': typeof HealthRoute
+  '/api/files': typeof ApiFilesRoute
   '/v1/plans': typeof V1PlansRoute
   '/v1/usage': typeof V1UsageRoute
+  '/api/analytics/track': typeof ApiAnalyticsTrackRoute
   '/v1/account/bootstrap': typeof V1AccountBootstrapRoute
+  '/v1/ai/providers': typeof V1AiProvidersRoute
   '/v1/payments/checkout': typeof V1PaymentsCheckoutRoute
-  '/v1/payments/webhook': typeof V1PaymentsWebhookRoute
   '/v1/ai/chat/completions': typeof V1AiChatCompletionsRoute
   '/v1/payments/checkouts/$checkoutId': typeof V1PaymentsCheckoutsCheckoutIdRoute
 }
@@ -92,11 +108,13 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/health': typeof HealthRoute
+  '/api/files': typeof ApiFilesRoute
   '/v1/plans': typeof V1PlansRoute
   '/v1/usage': typeof V1UsageRoute
+  '/api/analytics/track': typeof ApiAnalyticsTrackRoute
   '/v1/account/bootstrap': typeof V1AccountBootstrapRoute
+  '/v1/ai/providers': typeof V1AiProvidersRoute
   '/v1/payments/checkout': typeof V1PaymentsCheckoutRoute
-  '/v1/payments/webhook': typeof V1PaymentsWebhookRoute
   '/v1/ai/chat/completions': typeof V1AiChatCompletionsRoute
   '/v1/payments/checkouts/$checkoutId': typeof V1PaymentsCheckoutsCheckoutIdRoute
 }
@@ -105,33 +123,39 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/health'
+    | '/api/files'
     | '/v1/plans'
     | '/v1/usage'
+    | '/api/analytics/track'
     | '/v1/account/bootstrap'
+    | '/v1/ai/providers'
     | '/v1/payments/checkout'
-    | '/v1/payments/webhook'
     | '/v1/ai/chat/completions'
     | '/v1/payments/checkouts/$checkoutId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/health'
+    | '/api/files'
     | '/v1/plans'
     | '/v1/usage'
+    | '/api/analytics/track'
     | '/v1/account/bootstrap'
+    | '/v1/ai/providers'
     | '/v1/payments/checkout'
-    | '/v1/payments/webhook'
     | '/v1/ai/chat/completions'
     | '/v1/payments/checkouts/$checkoutId'
   id:
     | '__root__'
     | '/'
     | '/health'
+    | '/api/files'
     | '/v1/plans'
     | '/v1/usage'
+    | '/api/analytics/track'
     | '/v1/account/bootstrap'
+    | '/v1/ai/providers'
     | '/v1/payments/checkout'
-    | '/v1/payments/webhook'
     | '/v1/ai/chat/completions'
     | '/v1/payments/checkouts/$checkoutId'
   fileRoutesById: FileRoutesById
@@ -139,11 +163,13 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   HealthRoute: typeof HealthRoute
+  ApiFilesRoute: typeof ApiFilesRoute
   V1PlansRoute: typeof V1PlansRoute
   V1UsageRoute: typeof V1UsageRoute
+  ApiAnalyticsTrackRoute: typeof ApiAnalyticsTrackRoute
   V1AccountBootstrapRoute: typeof V1AccountBootstrapRoute
+  V1AiProvidersRoute: typeof V1AiProvidersRoute
   V1PaymentsCheckoutRoute: typeof V1PaymentsCheckoutRoute
-  V1PaymentsWebhookRoute: typeof V1PaymentsWebhookRoute
   V1AiChatCompletionsRoute: typeof V1AiChatCompletionsRoute
   V1PaymentsCheckoutsCheckoutIdRoute: typeof V1PaymentsCheckoutsCheckoutIdRoute
 }
@@ -164,6 +190,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof HealthRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/files': {
+      id: '/api/files'
+      path: '/api/files'
+      fullPath: '/api/files'
+      preLoaderRoute: typeof ApiFilesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/v1/plans': {
       id: '/v1/plans'
       path: '/v1/plans'
@@ -178,6 +211,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof V1UsageRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/analytics/track': {
+      id: '/api/analytics/track'
+      path: '/api/analytics/track'
+      fullPath: '/api/analytics/track'
+      preLoaderRoute: typeof ApiAnalyticsTrackRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/v1/account/bootstrap': {
       id: '/v1/account/bootstrap'
       path: '/v1/account/bootstrap'
@@ -185,18 +225,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof V1AccountBootstrapRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/v1/ai/providers': {
+      id: '/v1/ai/providers'
+      path: '/v1/ai/providers'
+      fullPath: '/v1/ai/providers'
+      preLoaderRoute: typeof V1AiProvidersRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/v1/payments/checkout': {
       id: '/v1/payments/checkout'
       path: '/v1/payments/checkout'
       fullPath: '/v1/payments/checkout'
       preLoaderRoute: typeof V1PaymentsCheckoutRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/v1/payments/webhook': {
-      id: '/v1/payments/webhook'
-      path: '/v1/payments/webhook'
-      fullPath: '/v1/payments/webhook'
-      preLoaderRoute: typeof V1PaymentsWebhookRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/v1/ai/chat/completions': {
@@ -219,11 +259,13 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   HealthRoute: HealthRoute,
+  ApiFilesRoute: ApiFilesRoute,
   V1PlansRoute: V1PlansRoute,
   V1UsageRoute: V1UsageRoute,
+  ApiAnalyticsTrackRoute: ApiAnalyticsTrackRoute,
   V1AccountBootstrapRoute: V1AccountBootstrapRoute,
+  V1AiProvidersRoute: V1AiProvidersRoute,
   V1PaymentsCheckoutRoute: V1PaymentsCheckoutRoute,
-  V1PaymentsWebhookRoute: V1PaymentsWebhookRoute,
   V1AiChatCompletionsRoute: V1AiChatCompletionsRoute,
   V1PaymentsCheckoutsCheckoutIdRoute: V1PaymentsCheckoutsCheckoutIdRoute,
 }

@@ -12,4 +12,6 @@ export default defineConfig({
     // nitro/vite builds from this
     server: { entry: "server" },
   },
+  // Build para rodar em VPS com Node (não Cloudflare).
+  nitro: { preset: "node-server" },
 });

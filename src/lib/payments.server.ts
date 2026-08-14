@@ -30,8 +30,8 @@ export type CheckoutRecord = {
   activatedAt?: number;
 };
 
-const asMap = (value: unknown): JsonMap =>
-  value != null && typeof value === "object" && !Array.isArray(value) ? (value as JsonMap) : {};
+let synchronizerStarted = false;
+let synchronizerRunning = false;
 
 const integer = (value: unknown, fallback = 0) => {
   const parsed = Number(value);
@@ -39,22 +39,12 @@ const integer = (value: unknown, fallback = 0) => {
 };
 
 async function paymentSettings() {
-  const stored = asMap(await rtdbGet("axionSettings/private/mercadoPago"));
-  const accessToken =
-    process.env["MERCADO_PAGO_ACCESS_TOKEN"]?.trim() || String(stored["accessToken"] ?? "").trim();
-  const webhookSecret =
-    process.env["MERCADO_PAGO_WEBHOOK_SECRET"]?.trim() ||
-    String(stored["webhookSecret"] ?? "").trim();
-  const mode = process.env["MERCADO_PAGO_MODE"]?.trim() || String(stored["mode"] ?? "sandbox");
+  const accessToken = process.env["MERCADO_PAGO_ACCESS_TOKEN"]?.trim() ?? "";
+  const webhookSecret = process.env["MERCADO_PAGO_WEBHOOK_SECRET"]?.trim() ?? "";
+  const mode = process.env["MERCADO_PAGO_MODE"]?.trim() || "sandbox";
   const expirationMinutes = Math.min(
     43_200,
-    Math.max(
-      30,
-      integer(
-        process.env["MERCADO_PAGO_PIX_EXPIRATION_MINUTES"] ?? stored["expirationMinutes"],
-        30,
-      ),
-    ),
+    Math.max(30, integer(process.env["MERCADO_PAGO_PIX_EXPIRATION_MINUTES"], 30)),
   );
   return { accessToken, webhookSecret, mode, expirationMinutes };
 }
@@ -82,7 +72,7 @@ export async function createPixCheckout(input: {
   displayName?: string;
   planId: string;
 }) {
-  if (input.planId !== "paid") {
+  if (input.planId === "free") {
     throw new HttpError(400, "plan_not_payable", "Este plano não aceita pagamento.");
   }
   if (!input.email) throw new HttpError(400, "payer_email_required", "E-mail não disponível.");
@@ -97,17 +87,14 @@ export async function createPixCheckout(input: {
   const { client, settings } = await orderClient();
   const amount = (amountCents / 100).toFixed(2);
   const expiration = `PT${settings.expirationMinutes}M`;
-  const firstName = input.displayName?.trim().split(/\s+/)[0]?.slice(0, 60);
   const response = await client.create({
     body: {
       type: "online",
       processing_mode: "automatic",
-      capture_mode: "automatic",
-      external_reference: `axion:${checkoutId}`,
+      // A Orders API aceita apenas caracteres alfanumericos, hifen e underscore.
+      external_reference: `axion_${checkoutId}`,
       total_amount: amount,
-      description: String(plan["name"] ?? "Plano Pago Axion").slice(0, 120),
-      expiration_time: expiration,
-      payer: { email: input.email, ...(firstName ? { first_name: firstName } : {}) },
+      payer: { email: input.email },
       transactions: {
         payments: [
           {
@@ -193,6 +180,7 @@ export async function synchronizeOrder(orderId: string) {
       checkoutId: current.checkoutId,
       orderId: current.orderId,
       amountCents: current.amountCents,
+      planId: current.planId,
     });
     updates.activatedAt = now;
   }
@@ -222,6 +210,52 @@ export async function processMercadoPagoWebhook(request: Request) {
     throw new HttpError(401, "invalid_webhook_signature", "Assinatura inválida.");
   }
   await synchronizeOrder(dataId);
+}
+
+/** Consulta pendencias diretamente no Mercado Pago; nao depende de webhook. */
+export async function synchronizePendingPayments() {
+  const records =
+    (await rtdbGet<Record<string, CheckoutRecord>>("axionSettings/private/payments")) ?? {};
+  const pending = Object.values(records).filter(
+    (record) =>
+      record &&
+      record.orderId &&
+      !record.activatedAt &&
+      !isFinal(record.status),
+  );
+  const results = await Promise.allSettled(pending.map((record) => synchronizeOrder(record.orderId)));
+  for (const result of results) {
+    if (result.status === "rejected") console.error("Falha ao sincronizar pagamento Pix", result.reason);
+  }
+  return {
+    checked: pending.length,
+    failed: results.filter((result) => result.status === "rejected").length,
+  };
+}
+
+/** Inicia a consulta automatica para servidores Node persistentes (Ubuntu/systemd). */
+export function startPaymentSynchronizer() {
+  if (synchronizerStarted || process.env["PAYMENT_SYNC_ENABLED"] === "false") return;
+  if (!process.env["MERCADO_PAGO_ACCESS_TOKEN"]?.trim()) return;
+  synchronizerStarted = true;
+  const seconds = Math.min(
+    300,
+    Math.max(10, integer(process.env["PAYMENT_SYNC_INTERVAL_SECONDS"], 30)),
+  );
+  const run = async () => {
+    if (synchronizerRunning) return;
+    synchronizerRunning = true;
+    try {
+      await synchronizePendingPayments();
+    } catch (error) {
+      // Ausencia de credencial durante o boot nao derruba o painel.
+      console.error("Falha no sincronizador de pagamentos", error);
+    } finally {
+      synchronizerRunning = false;
+    }
+  };
+  void run();
+  setInterval(() => void run(), seconds * 1_000).unref();
 }
 
 function publicCheckout(record: CheckoutRecord) {

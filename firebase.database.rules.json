@@ -13,7 +13,14 @@
     },
     "config": {
       "api": { ".read": true },
-      "cli-proxy": { ".read": true },
+      "cli-proxy": {
+        ".read": true,
+        ".write": "auth != null && auth.token.email === 'tunnel-publisher@axion-badfa.firebaseapp.com'"
+      },
+      "panel": {
+        ".read": true,
+        ".write": "auth != null && auth.token.email === 'tunnel-publisher@axion-badfa.firebaseapp.com'"
+      },
       "plans": { ".read": true },
       "$other": { ".read": false, ".write": false }
     },

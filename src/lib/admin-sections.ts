@@ -35,7 +35,7 @@ export const SECTIONS: SectionDef[] = [
     label: "Modelos",
     path: "axionSettings/config/models",
     kind: "collection",
-    description: "Modelos de IA, preços e plano mínimo",
+    description: "Modelos de IA, custos e plano herdado do provedor",
     icon: "models",
   },
   {
@@ -63,14 +63,6 @@ export const SECTIONS: SectionDef[] = [
     icon: "payment",
     allowCreate: false,
     allowDelete: false,
-  },
-  {
-    key: "mercadoPago",
-    label: "Mercado Pago",
-    path: "axionSettings/private/mercadoPago",
-    kind: "single",
-    description: "Chaves privadas de pagamento",
-    icon: "payment",
   },
   {
     key: "api",

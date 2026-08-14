@@ -1,0 +1,15 @@
+[Unit]
+Description=Cloudflare Tunnel (Quick Tunnel)
+After=network.target cliproxyapi.service
+Requires=cliproxyapi.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/cloudflared tunnel --url http://localhost:8317
+Restart=always
+RestartSec=5
+StandardOutput=append:/opt/CLIProxyAPI/logs/cloudflared.log
+StandardError=append:/opt/CLIProxyAPI/logs/cloudflared.log
+
+[Install]
+WantedBy=multi-user.target

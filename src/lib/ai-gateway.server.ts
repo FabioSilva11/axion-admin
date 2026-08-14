@@ -9,6 +9,7 @@ import {
 } from "./accounts.server";
 import { rtdbGet } from "./firebase.server";
 import { HttpError } from "./http.server";
+import { planAllows, resolveProviderPlan } from "./provider-plans";
 
 type JsonMap = Record<string, unknown>;
 
@@ -54,7 +55,7 @@ function endpointForProvider(provider: JsonMap) {
   } catch {
     throw new HttpError(503, "provider_invalid", "Endpoint do provedor inválido.");
   }
-  if (url.protocol !== "https:") {
+  if (url.protocol !== "https:" && process.env.ALLOW_INSECURE_PROVIDER_HTTP !== "true") {
     throw new HttpError(503, "provider_insecure", "O provedor precisa usar HTTPS.");
   }
   return url.toString();
@@ -105,6 +106,7 @@ function creditsForTokens(
   outputTokens: number,
   model: JsonMap,
   billing: JsonMap,
+  allowUnpricedModel = false,
 ) {
   const directInput = number(model["input_credits_per_1k"], 0);
   const directOutput = number(model["output_credits_per_1k"], 0);
@@ -117,6 +119,7 @@ function creditsForTokens(
   const inputUsd = number(model["input_usd_per_million"], 0);
   const outputUsd = number(model["output_usd_per_million"], 0);
   if (inputUsd <= 0 && outputUsd <= 0) {
+    if (allowUnpricedModel) return 1;
     throw new HttpError(503, "model_price_missing", "Preço de uso do modelo não configurado.");
   }
   const usdCost = (inputTokens * inputUsd + outputTokens * outputUsd) / 1_000_000;
@@ -157,11 +160,7 @@ export async function executeManagedChat(
     throw new HttpError(404, "model_not_found", "Modelo indisponível.");
   }
   const profile = await bootstrapUser(user.uid, user.email, user.name);
-  const planId = profile?.["plan"] === "paid" ? "paid" : "free";
-  const minimumPlan = String(model["min_plan"] ?? "free").toLowerCase();
-  if ((minimumPlan === "paid" || minimumPlan === "pro") && planId !== "paid") {
-    throw new HttpError(403, "plan_required", "Este modelo exige o Plano Pago.");
-  }
+  const planId = String(profile?.["plan"] ?? "free");
   const providerId = String(model["provider_id"] ?? model["providerId"] ?? "").trim();
   if (!providerId) throw new HttpError(503, "model_provider_missing", "Modelo sem provedor.");
   if (/[.#$[\]/]/.test(providerId)) {
@@ -171,11 +170,38 @@ export async function executeManagedChat(
   if (!provider || provider["enabled"] !== true) {
     throw new HttpError(503, "provider_unavailable", "Provedor indisponível.");
   }
+  // O provedor é a única fonte de verdade para disponibilidade por plano:
+  // "free" libera só o Free, "paid" só o Pago e "all" libera todos. Em dados
+  // legados (sem available_plans), o fallback é fail-closed para não liberar
+  // modelos pagos a usuários Free antes da migração do painel rodar.
+  const providerPlan = resolveProviderPlan(
+    provider["available_plans"],
+    Object.values(modelCatalog ?? {}).map((candidate) =>
+      String(candidate?.["provider_id"] ?? candidate?.["providerId"] ?? "").trim() === providerId
+        ? candidate?.["min_plan"]
+        : "",
+    ),
+  );
+  if (!planAllows(providerPlan, planId)) {
+    throw new HttpError(
+      403,
+      "provider_plan_required",
+      "Este provedor não está disponível no seu plano.",
+    );
+  }
+  // O modelo deve pertencer ao provedor selecionado (não confiar só na UI).
+  if (String(model["provider_id"] ?? model["providerId"] ?? "").trim() !== providerId) {
+    throw new HttpError(503, "model_provider_mismatch", "Modelo inválido para este provedor.");
+  }
   const [billing, plan] = await Promise.all([
     rtdbGet<JsonMap>("axionSettings/private/billing"),
     rtdbGet<JsonMap>(`config/plans/${planId}`),
   ]);
   if (!plan) throw new HttpError(503, "plan_unavailable", "Plano indisponível.");
+  const allowedModels = Array.isArray(plan["model_ids"]) ? plan["model_ids"] : [];
+  if (allowedModels.length && !allowedModels.map(String).includes(modelId)) {
+    throw new HttpError(403, "model_not_in_plan", "Este modelo nao esta incluido no seu plano.");
+  }
   const planMax = Math.max(
     1,
     integer(plan["max_output_tokens"], planId === "paid" ? 4_096 : 1_024),
@@ -197,7 +223,16 @@ export async function executeManagedChat(
   body["stream"] = false;
 
   const inputEstimate = estimatedInputTokens(body);
-  const reservation = creditsForTokens(inputEstimate, outputLimit, model, billing ?? {});
+  // Provedores exclusivos do Plano Pago exigem custo configurado; nos demais,
+  // modelos sem preço usam a cobrança mínima (cota do plano).
+  const unpricedAllowed = providerPlan !== "paid";
+  const reservation = creditsForTokens(
+    inputEstimate,
+    outputLimit,
+    model,
+    billing ?? {},
+    unpricedAllowed,
+  );
   const requestId = safeRequestId(request);
   const reserved = await reserveCredits({
     uid: user.uid,
@@ -225,7 +260,13 @@ export async function executeManagedChat(
     }
     if (!upstream.ok) throw publicProviderError(upstream.status, payload);
     const usage = tokenUsage(payload, body);
-    const actual = creditsForTokens(usage.input, usage.output, model, billing ?? {});
+    const actual = creditsForTokens(
+      usage.input,
+      usage.output,
+      model,
+      billing ?? {},
+      unpricedAllowed,
+    );
     const settledProfile = await settleCredits({
       uid: user.uid,
       requestId,

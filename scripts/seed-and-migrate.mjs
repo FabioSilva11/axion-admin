@@ -154,11 +154,7 @@ updates["axionSettings/private/billing"] = {
   ...object(object(object(liveRoot.axionServer).private).billing),
   ...object(livePrivate.billing),
 };
-updates["axionSettings/private/mercadoPago"] = {
-  mode: "sandbox",
-  expirationMinutes: 30,
-  ...(secureLayoutAlreadyApplied ? object(livePrivate.mercadoPago) : {}),
-};
+updates["axionSettings/private/mercadoPago"] = null;
 updates["axionSettings/private/schemaMigrationVersion"] = 4;
 updates["axionSettings/private/payments"] = {
   ...object(object(object(liveRoot.axionServer).private).payments),
