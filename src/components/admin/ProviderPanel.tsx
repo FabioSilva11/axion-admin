@@ -27,6 +27,14 @@ import {
   syncProviderCatalog,
 } from "@/lib/admin.functions";
 import { planLabel, type ProviderPlan } from "@/lib/provider-plans";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 type FormState = {
   providerId: string;
@@ -60,7 +68,8 @@ export function ProviderPanel() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [models, setModels] = useState<string[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [dialogOpen, setDialogOpen] = useState(false);
+  const [providerDialogOpen, setProviderDialogOpen] = useState(false);
+  const [modelDialogOpen, setModelDialogOpen] = useState(false);
   const [savedProviderImportId, setSavedProviderImportId] = useState<string | null>(null);
   const list = useServerFn(getProviderList);
   const save = useServerFn(saveProvider);
@@ -84,8 +93,9 @@ export function ProviderPanel() {
       queryClient.invalidateQueries({ queryKey: ["providers"] });
       queryClient.invalidateQueries({ queryKey: ["model-editor"] });
       queryClient.invalidateQueries({ queryKey: ["admin-dashboard"] });
-      if (!editingId) setEditingId(form.providerId);
-      setForm((current) => ({ ...current, apiKey: "" }));
+      setProviderDialogOpen(false);
+      setEditingId(null);
+      setForm(emptyForm());
     },
     onError: (error) =>
       toast.error(error instanceof Error ? error.message : "Nao foi possivel salvar o provedor."),
@@ -118,7 +128,8 @@ export function ProviderPanel() {
       setModels(result.models);
       setSelected(new Set());
       setSavedProviderImportId(null);
-      setDialogOpen(true);
+      setProviderDialogOpen(false);
+      setModelDialogOpen(true);
     },
     onError: () => toast.error("Para consultar modelos, informe a API key atual do provedor."),
   });
@@ -127,9 +138,9 @@ export function ProviderPanel() {
     onSuccess: (result, provider) => {
       if (!result.ok) return toast.error(result.error);
       setModels(result.models);
-      setSelected(new Set());
+      setSelected(new Set(result.selectedModels));
       setSavedProviderImportId(provider.id);
-      setDialogOpen(true);
+      setModelDialogOpen(true);
     },
     onError: () => toast.error("Nao foi possivel consultar os modelos do provedor."),
   });
@@ -152,7 +163,7 @@ export function ProviderPanel() {
     onSuccess: (result) => {
       if (!result.ok) return toast.error(result.error);
       toast.success(`${result.imported} modelos importados.`);
-      setDialogOpen(false);
+      setModelDialogOpen(false);
       setSavedProviderImportId(null);
       queryClient.invalidateQueries({ queryKey: ["providers"] });
       queryClient.invalidateQueries({ queryKey: ["model-editor"] });
@@ -199,13 +210,17 @@ export function ProviderPanel() {
       enabled: provider.enabled,
       availablePlans: provider.availablePlans,
     });
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    setProviderDialogOpen(true);
   };
   const cancelEditing = () => {
     setEditingId(null);
     setForm(emptyForm());
     setModels([]);
     setSelected(new Set());
+  };
+  const startCreating = () => {
+    cancelEditing();
+    setProviderDialogOpen(true);
   };
   const toggle = (model: string) =>
     setSelected((current) => {
@@ -245,7 +260,7 @@ export function ProviderPanel() {
             Sincronizar disponibilidade
           </button>
           <button
-            onClick={cancelEditing}
+            onClick={startCreating}
             className="accent-surface inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold"
           >
             <Plus className="size-3.5" /> Novo provedor
@@ -253,67 +268,63 @@ export function ProviderPanel() {
         </div>
       </header>
 
-      <article className="panel glow-ring p-5">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h3 className="text-lg font-semibold">
+      <Dialog
+        open={providerDialogOpen}
+        onOpenChange={(open) => {
+          setProviderDialogOpen(open);
+          if (!open) cancelEditing();
+        }}
+      >
+        <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto border-border bg-background">
+          <DialogHeader>
+            <DialogTitle>
               {editingId ? "Editar e renomear provedor" : "Cadastrar provedor"}
-            </h3>
-            <p className="text-sm text-muted-foreground">
+            </DialogTitle>
+            <DialogDescription>
               A chave nunca e exibida. Ao editar, deixe-a vazia para manter a credencial salva.
-            </p>
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 md:grid-cols-2">
+            <Field
+              label="Identificador tecnico"
+              value={form.providerId}
+              placeholder="ex: openrouter"
+              disabled={Boolean(editingId)}
+              onChange={(value) =>
+                update("providerId", value.toLowerCase().replace(/[^a-z0-9_-]/g, ""))
+              }
+            />
+            <Field
+              label="Nome exibido"
+              value={form.name}
+              placeholder="ex: OpenRouter"
+              onChange={(value) => update("name", value)}
+            />
+            <Field
+              label="Endpoint base"
+              value={form.baseUrl}
+              placeholder="https://api.exemplo.com/v1"
+              onChange={(value) => update("baseUrl", value)}
+            />
+            <Field
+              label={editingId ? "Nova API key (opcional)" : "API key"}
+              value={form.apiKey}
+              placeholder={editingId ? "Deixe vazio para manter a atual" : "Cole a chave aqui"}
+              type="password"
+              onChange={(value) => update("apiKey", value)}
+            />
+            <PlanField
+              value={form.availablePlans}
+              onChange={(value) => update("availablePlans", value)}
+            />
+            <div className="grid gap-1.5 self-end text-xs font-medium text-muted-foreground">
+              <span>Disponibilidade dos modelos</span>
+              <p className="text-[0.7rem] font-normal leading-relaxed text-muted-foreground/80">
+                Aplicada automaticamente a todos os modelos deste provedor. Nao e possivel
+                configurar o plano de cada modelo individualmente.
+              </p>
+            </div>
           </div>
-          {editingId ? (
-            <button
-              onClick={cancelEditing}
-              className="rounded-lg border border-border px-3 py-1.5 text-xs hover:bg-secondary"
-            >
-              Cancelar edicao
-            </button>
-          ) : null}
-        </div>
-        <div className="mt-5 grid gap-4 md:grid-cols-2">
-          <Field
-            label="Identificador tecnico"
-            value={form.providerId}
-            placeholder="ex: openrouter"
-            disabled={Boolean(editingId)}
-            onChange={(value) =>
-              update("providerId", value.toLowerCase().replace(/[^a-z0-9_-]/g, ""))
-            }
-          />
-          <Field
-            label="Nome exibido"
-            value={form.name}
-            placeholder="ex: OpenRouter"
-            onChange={(value) => update("name", value)}
-          />
-          <Field
-            label="Endpoint base"
-            value={form.baseUrl}
-            placeholder="https://api.exemplo.com/v1"
-            onChange={(value) => update("baseUrl", value)}
-          />
-          <Field
-            label={editingId ? "Nova API key (opcional)" : "API key"}
-            value={form.apiKey}
-            placeholder={editingId ? "Deixe vazio para manter a atual" : "Cole a chave aqui"}
-            type="password"
-            onChange={(value) => update("apiKey", value)}
-          />
-          <PlanField
-            value={form.availablePlans}
-            onChange={(value) => update("availablePlans", value)}
-          />
-          <div className="grid gap-1.5 self-end text-xs font-medium text-muted-foreground">
-            <span>Disponibilidade dos modelos</span>
-            <p className="text-[0.7rem] font-normal leading-relaxed text-muted-foreground/80">
-              Aplicada automaticamente a todos os modelos deste provedor. Nao e possivel configurar
-              o plano de cada modelo individualmente.
-            </p>
-          </div>
-        </div>
-        <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
           <label className="inline-flex cursor-pointer items-center gap-2 text-sm font-medium">
             <input
               type="checkbox"
@@ -322,7 +333,13 @@ export function ProviderPanel() {
             />{" "}
             Provedor ativo
           </label>
-          <div className="flex flex-wrap gap-2">
+          <DialogFooter className="gap-2 sm:space-x-0">
+            <button
+              onClick={() => setProviderDialogOpen(false)}
+              className="rounded-lg border border-border px-3 py-2 text-xs font-medium hover:bg-secondary"
+            >
+              Cancelar
+            </button>
             <button
               disabled={!canDiscover || discoverMutation.isPending}
               onClick={() => discoverMutation.mutate()}
@@ -347,9 +364,9 @@ export function ProviderPanel() {
               )}{" "}
               Salvar provedor
             </button>
-          </div>
-        </div>
-      </article>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <div>
         <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
@@ -426,62 +443,54 @@ export function ProviderPanel() {
         </div>
       </div>
 
-      {dialogOpen ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-          <div className="panel max-h-[85vh] w-full max-w-2xl overflow-hidden p-5">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <h3 className="text-lg font-semibold">Selecionar modelos</h3>
-                <p className="text-sm text-muted-foreground">
-                  {models.length} encontrados. Comece escolhendo somente os modelos que deseja
-                  importar.
-                </p>
-              </div>
-              <button
-                onClick={() => setDialogOpen(false)}
-                className="rounded-lg border border-border px-3 py-1.5 text-xs"
+      <Dialog open={modelDialogOpen} onOpenChange={setModelDialogOpen}>
+        <DialogContent className="max-h-[90vh] max-w-2xl overflow-hidden border-border bg-background">
+          <DialogHeader>
+            <DialogTitle>Adicionar modelos</DialogTitle>
+            <DialogDescription>
+              {models.length} encontrados. Escolha somente os modelos que deseja adicionar.
+              {savedProviderImportId
+                ? " Os modelos que ja estavam vinculados aparecem marcados."
+                : ""}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="mt-4 max-h-[46vh] overflow-y-auto rounded-lg border border-border">
+            {models.map((model) => (
+              <label
+                key={model}
+                className="flex cursor-pointer items-center gap-3 border-b border-border px-3 py-2 text-sm last:border-0"
               >
-                Fechar
-              </button>
-            </div>
-            <div className="mt-4 max-h-[46vh] overflow-y-auto rounded-lg border border-border">
-              {models.map((model) => (
-                <label
-                  key={model}
-                  className="flex cursor-pointer items-center gap-3 border-b border-border px-3 py-2 text-sm last:border-0"
-                >
-                  <input
-                    type="checkbox"
-                    checked={selected.has(model)}
-                    onChange={() => toggle(model)}
-                  />
-                  <span className="mono">{model}</span>
-                </label>
-              ))}
-            </div>
-            <div className="mt-4 flex items-center justify-between gap-3">
-              <button
-                onClick={() => setSelected(allModelsSelected ? new Set() : new Set(models))}
-                className="text-xs text-primary"
-              >
-                {allModelsSelected ? "Desmarcar todos" : "Selecionar todos"}
-              </button>
-              <button
-                disabled={!selected.size || importMutation.isPending}
-                onClick={() => importMutation.mutate()}
-                className="accent-surface inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold disabled:opacity-50"
-              >
-                {importMutation.isPending ? (
-                  <Loader2 className="size-3.5 animate-spin" />
-                ) : (
-                  <Check className="size-3.5" />
-                )}{" "}
-                Importar {selected.size} modelos
-              </button>
-            </div>
+                <input
+                  type="checkbox"
+                  checked={selected.has(model)}
+                  onChange={() => toggle(model)}
+                />
+                <span className="mono">{model}</span>
+              </label>
+            ))}
           </div>
-        </div>
-      ) : null}
+          <div className="flex items-center justify-between gap-3">
+            <button
+              onClick={() => setSelected(allModelsSelected ? new Set() : new Set(models))}
+              className="text-xs text-primary"
+            >
+              {allModelsSelected ? "Desmarcar todos" : "Selecionar todos"}
+            </button>
+            <button
+              disabled={!selected.size || importMutation.isPending}
+              onClick={() => importMutation.mutate()}
+              className="accent-surface inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold disabled:opacity-50"
+            >
+              {importMutation.isPending ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : (
+                <Check className="size-3.5" />
+              )}{" "}
+              Importar {selected.size} modelos
+            </button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </section>
   );
 }
