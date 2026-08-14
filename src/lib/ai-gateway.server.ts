@@ -9,6 +9,12 @@ import {
 } from "./accounts.server";
 import { rtdbGet } from "./firebase.server";
 import { HttpError } from "./http.server";
+import {
+  billingEnvelope,
+  OpenAiStreamMeter,
+  SseEventDecoder,
+  type StreamUsage,
+} from "./openai-stream.server";
 import { planAllows, resolveProviderPlan } from "./provider-plans";
 
 type JsonMap = Record<string, unknown>;
@@ -24,7 +30,10 @@ const number = (value: unknown, fallback = 0) => {
 const integer = (value: unknown, fallback = 0) => Math.trunc(number(value, fallback));
 
 function safeRequestId(request: Request) {
-  const candidate = request.headers.get("x-request-id")?.trim() ?? "";
+  const candidate =
+    request.headers.get("x-axion-operation-id")?.trim() ||
+    request.headers.get("x-request-id")?.trim() ||
+    "";
   return /^[A-Za-z0-9_-]{16,80}$/.test(candidate) ? candidate : randomUUID();
 }
 
@@ -61,13 +70,15 @@ function endpointForProvider(provider: JsonMap) {
   return url.toString();
 }
 
-function providerHeaders(provider: JsonMap) {
+function providerHeaders(provider: JsonMap, streaming = false) {
   const apiKey = String(
     provider["api_key"] ?? provider["apiKey"] ?? provider["token"] ?? "",
   ).trim();
   if (!apiKey) throw new HttpError(503, "provider_not_configured", "Provedor sem credencial.");
   const headers = new Headers({
-    accept: "application/json",
+    accept: streaming
+      ? "text/event-stream, application/x-ndjson, application/json"
+      : "application/json",
     "content-type": "application/json; charset=utf-8",
     authorization: `Bearer ${apiKey}`,
   });
@@ -139,14 +150,224 @@ function publicProviderError(status: number, payload: JsonMap) {
   return new HttpError(502, "provider_error", message || "O provedor de IA recusou a solicitação.");
 }
 
+const wait = (milliseconds: number) =>
+  new Promise<void>((resolve) => setTimeout(resolve, milliseconds));
+
+async function settleCreditsWithRetry(input: {
+  uid: string;
+  requestId: string;
+  actualAmount: number;
+  inputTokens: number;
+  outputTokens: number;
+}) {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      return { profile: await settleCredits(input), pending: false };
+    } catch (error) {
+      lastError = error;
+      if (attempt < 2) await wait(100 * 4 ** attempt);
+    }
+  }
+  // Never release a reservation after paid provider output was delivered. Keeping
+  // it reserved is financially safe and allows an idempotent reconciliation later.
+  console.error("Axion billing settlement pending", {
+    requestId: input.requestId,
+    error: lastError instanceof Error ? lastError.message : String(lastError),
+  });
+  return { profile: null, pending: true };
+}
+
+function streamErrorEnvelope(code: string, message: string) {
+  return JSON.stringify({
+    error: {
+      code,
+      message: message.trim().slice(0, 300) || "O stream do provedor foi interrompido.",
+    },
+  });
+}
+
+function createManagedStreamResponse(input: {
+  upstream: Response;
+  mode: "sse" | "ndjson";
+  upstreamAbort: AbortController;
+  cleanup: () => void;
+  uid: string;
+  requestId: string;
+  model: JsonMap;
+  billing: JsonMap;
+  freeModel: boolean;
+  inputEstimate: number;
+  reservedProfile: JsonMap | null;
+}) {
+  if (!input.upstream.body) {
+    throw new HttpError(502, "empty_provider_stream", "O provedor retornou um stream vazio.");
+  }
+
+  const reader = input.upstream.body.getReader();
+  const decoder = new TextDecoder();
+  const encoder = new TextEncoder();
+  const meter = new OpenAiStreamMeter();
+  const sse = new SseEventDecoder();
+  let ndjsonBuffer = "";
+  let cancelled = false;
+  let finalized: Promise<{
+    usage: StreamUsage;
+    wallet: ReturnType<typeof walletFromProfile>;
+    pending: boolean;
+  }> | null = null;
+
+  const finishBilling = (reason: string) => {
+    if (finalized) return finalized;
+    finalized = (async () => {
+      const usage = meter.usage(input.inputEstimate);
+      if (!meter.hasBillablePayload()) {
+        const profile = await releaseCredits(input.uid, input.requestId, reason);
+        return { usage, wallet: walletFromProfile(profile), pending: false };
+      }
+      const actual = creditsForTokens(
+        usage.input,
+        usage.output,
+        input.model,
+        input.billing,
+        input.freeModel,
+      );
+      const settled = await settleCreditsWithRetry({
+        uid: input.uid,
+        requestId: input.requestId,
+        actualAmount: actual,
+        inputTokens: usage.input,
+        outputTokens: usage.output,
+      });
+      return {
+        usage,
+        wallet: walletFromProfile(settled.profile ?? input.reservedProfile),
+        pending: settled.pending,
+      };
+    })().finally(input.cleanup);
+    return finalized;
+  };
+
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      const enqueueText = (value: string) => {
+        if (!cancelled) controller.enqueue(encoder.encode(value));
+      };
+
+      const forwardSseEvents = (events: ReturnType<SseEventDecoder["push"]>) => {
+        for (const event of events) {
+          if (event.data.trim() === "[DONE]") continue;
+          meter.observeData(event.data);
+          enqueueText(`${event.rawLines.join("\n")}\n\n`);
+        }
+      };
+
+      const forwardNdjsonText = (text: string, flush = false) => {
+        ndjsonBuffer += text;
+        let newline: number;
+        while ((newline = ndjsonBuffer.indexOf("\n")) >= 0) {
+          let line = ndjsonBuffer.slice(0, newline);
+          ndjsonBuffer = ndjsonBuffer.slice(newline + 1);
+          if (line.endsWith("\r")) line = line.slice(0, -1);
+          const trimmed = line.trim();
+          if (trimmed && trimmed !== "[DONE]") {
+            meter.observeData(trimmed);
+            enqueueText(`${line}\n`);
+          } else if (!trimmed) {
+            enqueueText("\n");
+          }
+        }
+        if (flush && ndjsonBuffer.trim()) {
+          const line = ndjsonBuffer.trimEnd();
+          ndjsonBuffer = "";
+          if (line.trim() !== "[DONE]") {
+            meter.observeData(line.trim());
+            enqueueText(`${line}\n`);
+          }
+        }
+      };
+
+      void (async () => {
+        let transportError = "";
+        try {
+          while (true) {
+            const chunk = await reader.read();
+            if (chunk.done) break;
+            const text = decoder.decode(chunk.value, { stream: true });
+            if (input.mode === "sse") forwardSseEvents(sse.push(text));
+            else forwardNdjsonText(text);
+          }
+          const tail = decoder.decode();
+          if (input.mode === "sse") {
+            forwardSseEvents(sse.push(tail));
+            forwardSseEvents(sse.finish());
+          } else {
+            forwardNdjsonText(tail, true);
+          }
+        } catch (error) {
+          if (!cancelled) {
+            transportError = error instanceof Error ? error.message : "stream_interrupted";
+          }
+        }
+
+        const reason = cancelled
+          ? "client_cancelled"
+          : meter.errorMessage()
+            ? "provider_stream_error"
+            : transportError
+              ? "provider_stream_interrupted"
+              : "stream_completed";
+        const billed = await finishBilling(reason);
+        if (cancelled) return;
+
+        if (transportError) {
+          const error = streamErrorEnvelope("provider_stream_interrupted", transportError);
+          enqueueText(input.mode === "sse" ? `data: ${error}\n\n` : `${error}\n`);
+        }
+        const billing = JSON.stringify(
+          billingEnvelope(input.requestId, billed.usage, billed.wallet, billed.pending),
+        );
+        enqueueText(input.mode === "sse" ? `data: ${billing}\n\n` : `${billing}\n`);
+        if (input.mode === "sse") enqueueText("data: [DONE]\n\n");
+        controller.close();
+      })().catch((error) => {
+        input.cleanup();
+        if (!cancelled) controller.error(error);
+      });
+    },
+    async cancel() {
+      cancelled = true;
+      input.upstreamAbort.abort("client_cancelled");
+      try {
+        await reader.cancel("client_cancelled");
+      } catch {
+        // The reader may already be closed by the upstream abort.
+      }
+      await finishBilling("client_cancelled");
+    },
+  });
+
+  return new Response(body, {
+    status: 200,
+    headers: {
+      "cache-control": "no-store, no-transform",
+      "content-type":
+        input.mode === "sse"
+          ? "text/event-stream; charset=utf-8"
+          : "application/x-ndjson; charset=utf-8",
+      "x-accel-buffering": "no",
+      "x-axion-request-id": input.requestId,
+      "x-content-type-options": "nosniff",
+    },
+  });
+}
+
 export async function executeManagedChat(
   request: Request,
   user: { uid: string; email?: string; name?: string },
 ) {
   const body = await readJsonBody(request);
-  if (body["stream"] === true) {
-    throw new HttpError(400, "stream_not_supported", "O gateway gerenciado requer stream=false.");
-  }
+  const streamRequested = body["stream"] === true;
   const modelId = String(body["model"] ?? "").trim();
   if (!modelId || modelId.length > 160) {
     throw new HttpError(400, "model_required", "Selecione um modelo válido.");
@@ -220,7 +441,15 @@ export async function executeManagedChat(
   delete body["max_completion_tokens"];
   body[maxField === "max_completion_tokens" ? "max_completion_tokens" : "max_tokens"] = outputLimit;
   body["model"] = String(model["upstream_model"] ?? model["upstreamModel"] ?? modelId);
-  body["stream"] = false;
+  body["stream"] = streamRequested;
+  if (streamRequested) {
+    body["stream_options"] = {
+      ...asMap(body["stream_options"]),
+      include_usage: true,
+    };
+  } else {
+    delete body["stream_options"];
+  }
 
   const inputEstimate = estimatedInputTokens(body);
   // Provedores exclusivos do Plano Pago exigem custo configurado; nos demais,
@@ -244,13 +473,77 @@ export async function executeManagedChat(
     throw new HttpError(409, "duplicate_request", "Esta solicitação já foi processada.");
   }
 
+  const upstreamAbort = new AbortController();
+  const timeout = setTimeout(() => upstreamAbort.abort("provider_timeout"), 180_000);
+  const abortFromClient = () => upstreamAbort.abort("client_cancelled");
+  request.signal.addEventListener("abort", abortFromClient, { once: true });
+  let cleanedUp = false;
+  const cleanup = () => {
+    if (cleanedUp) return;
+    cleanedUp = true;
+    clearTimeout(timeout);
+    request.signal.removeEventListener("abort", abortFromClient);
+  };
+  let providerOutputReceived = false;
+
   try {
-    const upstream = await fetch(endpointForProvider(provider), {
-      method: "POST",
-      headers: providerHeaders(provider),
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(180_000),
-    });
+    const providerUrl = endpointForProvider(provider);
+    const sendUpstream = () =>
+      fetch(providerUrl, {
+        method: "POST",
+        headers: providerHeaders(provider, streamRequested),
+        body: JSON.stringify(body),
+        signal: upstreamAbort.signal,
+      });
+
+    let upstream = await sendUpstream();
+    if (!upstream.ok && streamRequested && body["stream_options"]) {
+      const rawError = await upstream.text();
+      const lowerError = rawError.toLowerCase();
+      if (lowerError.includes("stream_options") || lowerError.includes("include_usage")) {
+        delete body["stream_options"];
+        upstream = await sendUpstream();
+      } else {
+        let errorPayload: JsonMap;
+        try {
+          errorPayload = asMap(JSON.parse(rawError));
+        } catch {
+          errorPayload = {};
+        }
+        throw publicProviderError(upstream.status, errorPayload);
+      }
+    }
+
+    if (!upstream.ok) {
+      const rawError = await upstream.text();
+      let errorPayload: JsonMap;
+      try {
+        errorPayload = asMap(JSON.parse(rawError));
+      } catch {
+        errorPayload = {};
+      }
+      throw publicProviderError(upstream.status, errorPayload);
+    }
+
+    const contentType = upstream.headers.get("content-type")?.toLowerCase() ?? "";
+    if (streamRequested && !contentType.includes("application/json")) {
+      const response = createManagedStreamResponse({
+        upstream,
+        mode: contentType.includes("ndjson") || contentType.includes("jsonl") ? "ndjson" : "sse",
+        upstreamAbort,
+        cleanup,
+        uid: user.uid,
+        requestId,
+        model,
+        billing: billing ?? {},
+        freeModel: unpricedAllowed,
+        inputEstimate,
+        reservedProfile: reserved.profile,
+      });
+      providerOutputReceived = true;
+      return response;
+    }
+
     const raw = await upstream.text();
     let payload: JsonMap;
     try {
@@ -258,7 +551,7 @@ export async function executeManagedChat(
     } catch {
       throw new HttpError(502, "invalid_provider_response", "Resposta inválida do provedor.");
     }
-    if (!upstream.ok) throw publicProviderError(upstream.status, payload);
+    providerOutputReceived = true;
     const usage = tokenUsage(payload, body);
     const actual = creditsForTokens(
       usage.input,
@@ -267,24 +560,29 @@ export async function executeManagedChat(
       billing ?? {},
       unpricedAllowed,
     );
-    const settledProfile = await settleCredits({
+    const settled = await settleCreditsWithRetry({
       uid: user.uid,
       requestId,
       actualAmount: actual,
       inputTokens: usage.input,
       outputTokens: usage.output,
     });
-    payload["axion_wallet"] = walletFromProfile(settledProfile);
+    payload["axion_wallet"] = walletFromProfile(settled.profile ?? reserved.profile);
     payload["axion_request_id"] = requestId;
+    if (settled.pending) payload["axion_billing_pending"] = true;
+    cleanup();
     return payload;
   } catch (error) {
-    await releaseCredits(
-      user.uid,
-      requestId,
-      error instanceof Error ? error.name : "provider_failure",
-    );
+    cleanup();
+    if (!providerOutputReceived) {
+      await releaseCredits(
+        user.uid,
+        requestId,
+        error instanceof Error ? error.name : "provider_failure",
+      );
+    }
     if (error instanceof HttpError) throw error;
-    if (error instanceof Error && error.name === "TimeoutError") {
+    if (upstreamAbort.signal.aborted && upstreamAbort.signal.reason === "provider_timeout") {
       throw new HttpError(504, "provider_timeout", "O provedor demorou demais para responder.");
     }
     throw new HttpError(502, "provider_unavailable", "Não foi possível acessar o provedor de IA.");

@@ -10,6 +10,7 @@
     "preview": "vite preview",
     "firebase:migrate": "node --env-file=.env.local scripts/seed-and-migrate.mjs",
     "firebase:rules": "node --env-file=.env.local scripts/deploy-rules.mjs",
+    "test:stream": "node --experimental-strip-types --test src/lib/openai-stream.test.ts",
     "lint": "eslint .",
     "format": "prettier --write ."
   },

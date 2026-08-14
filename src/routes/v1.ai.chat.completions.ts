@@ -10,7 +10,7 @@ export const Route = createFileRoute("/v1/ai/chat/completions")({
         try {
           const user = await requireFirebaseUser(request);
           const payload = await executeManagedChat(request, user);
-          return noStoreJson(payload);
+          return payload instanceof Response ? payload : noStoreJson(payload);
         } catch (error) {
           return jsonError(error);
         }
