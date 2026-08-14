@@ -112,23 +112,34 @@ export const getAdminDashboard = createServerFn({ method: "GET" }).handler(async
   const { migrateProviderPlanConfig } = await import("./provider-catalog.server");
   await migrateProviderPlanConfig();
 
-  const [usersRaw, plansRaw, modelsRaw, providersRaw, paymentsRaw, appRaw, api, proxy] =
-    await Promise.all([
-      rtdbGet<Record<string, JsonMap>>("users"),
-      rtdbGet<Record<string, JsonMap>>("config/plans"),
-      rtdbGet<Record<string, JsonMap>>("axionSettings/config/models"),
-      rtdbGet<Record<string, JsonMap>>("axionSettings/config/providers"),
-      rtdbGet<Record<string, JsonMap>>("axionSettings/private/payments"),
-      rtdbGet<JsonMap>("config/app"),
-      rtdbGet<JsonMap>("config/api"),
-      rtdbGet<JsonMap>("config/cli-proxy"),
-    ]);
+  const [
+    usersRaw,
+    plansRaw,
+    modelsRaw,
+    providersRaw,
+    paymentsRaw,
+    paymentStatsRaw,
+    appRaw,
+    api,
+    proxy,
+  ] = await Promise.all([
+    rtdbGet<Record<string, JsonMap>>("users"),
+    rtdbGet<Record<string, JsonMap>>("config/plans"),
+    rtdbGet<Record<string, JsonMap>>("axionSettings/config/models"),
+    rtdbGet<Record<string, JsonMap>>("axionSettings/config/providers"),
+    rtdbGet<Record<string, JsonMap>>("axionSettings/private/payments"),
+    rtdbGet<JsonMap>("axionSettings/private/paymentStats"),
+    rtdbGet<JsonMap>("config/app"),
+    rtdbGet<JsonMap>("config/api"),
+    rtdbGet<JsonMap>("config/cli-proxy"),
+  ]);
 
   const usersObject = usersRaw ?? {};
   const plansObject = plansRaw ?? {};
   const modelsObject = modelsRaw ?? {};
   const providersObject = providersRaw ?? {};
   const paymentsObject = paymentsRaw ?? {};
+  const paymentStats = paymentStatsRaw ?? {};
   const now = Date.now();
 
   const plans = Object.entries(plansObject).map(([key, value]) => ({
@@ -286,19 +297,30 @@ export const getAdminDashboard = createServerFn({ method: "GET" }).handler(async
       blocked: users.filter((user) => user.blocked).length,
       models: models.length,
       providers: providers.length,
-      payments: payments.length,
+      payments: integer(paymentStats["createdCount"], payments.length),
       inputTokens: requests.reduce((sum, item) => sum + item.inputTokens, 0),
       outputTokens: requests.reduce((sum, item) => sum + item.outputTokens, 0),
       credits: requests.reduce((sum, item) => sum + item.chargedCredits, 0),
-      revenueCents: payments
-        .filter((payment) => payment.activated)
-        .reduce((sum, payment) => sum + payment.amountCents, 0),
+      revenueCents: integer(paymentStats["revenueCents"]),
     },
     users,
     plans,
     models,
     providers,
     payments,
+    paymentStats: {
+      createdCount: integer(paymentStats["createdCount"], payments.length),
+      pendingCount: integer(paymentStats["pendingCount"], payments.length),
+      pendingAmountCents: integer(
+        paymentStats["pendingAmountCents"],
+        payments.reduce((sum, payment) => sum + payment.amountCents, 0),
+      ),
+      approvedCount: integer(paymentStats["approvedCount"]),
+      expiredCount: integer(paymentStats["expiredCount"]),
+      failedCount: integer(paymentStats["failedCount"]),
+      revenueCents: integer(paymentStats["revenueCents"]),
+      updatedAt: integer(paymentStats["updatedAt"]),
+    },
     dailyUsage: [...dailyUsage.entries()]
       .map(([day, tokens]) => ({ day, tokens }))
       .sort((a, b) => a.day.localeCompare(b.day))

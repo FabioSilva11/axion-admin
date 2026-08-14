@@ -37,24 +37,50 @@ const defaultPlans = {
     active: true,
     currency_id: "BRL",
     price_cents: 0,
-    signup_credits: 1_000,
+    signup_credits: 500,
     cycle_days: 30,
-    max_output_tokens: 1_024,
-    requests_per_minute: 4,
-    daily_credit_limit: 600,
+    max_output_tokens: 768,
+    requests_per_minute: 3,
+    daily_credit_limit: 250,
   },
-  paid: {
-    id: "paid",
-    name: "Plano Pago",
-    description: "Mais modelos, respostas maiores e 30.000 créditos por ciclo.",
+  starter: {
+    id: "starter",
+    name: "Axion Start",
+    description: "Para projetos pequenos: mais créditos, respostas maiores e uso diário.",
     active: true,
     currency_id: "BRL",
-    price_cents: 2_990,
-    monthly_credits: 30_000,
+    price_cents: 500,
+    monthly_credits: 4_000,
+    cycle_days: 30,
+    max_output_tokens: 2_048,
+    requests_per_minute: 8,
+    daily_credit_limit: 800,
+  },
+  pro: {
+    id: "pro",
+    name: "Axion Pro",
+    description: "Para uso frequente: mais contexto, ferramentas e 12.000 créditos por ciclo.",
+    active: true,
+    currency_id: "BRL",
+    price_cents: 1_490,
+    monthly_credits: 12_000,
     cycle_days: 30,
     max_output_tokens: 4_096,
     requests_per_minute: 20,
-    daily_credit_limit: 5_000,
+    daily_credit_limit: 3_000,
+  },
+  max: {
+    id: "max",
+    name: "Axion Max",
+    description: "Para projetos intensivos: prioridade, respostas longas e 25.000 créditos.",
+    active: true,
+    currency_id: "BRL",
+    price_cents: 2_990,
+    monthly_credits: 25_000,
+    cycle_days: 30,
+    max_output_tokens: 8_192,
+    requests_per_minute: 40,
+    daily_credit_limit: 8_000,
   },
 };
 
@@ -71,7 +97,13 @@ const secureLayoutAlreadyApplied = migrationVersion >= 4;
 
 // Os limites financeiros são deliberadamente normalizados. O export antigo
 // prometia 1 bilhão de créditos por R$ 25,00, o que não era sustentável.
-const mergedPlans = defaultPlans;
+const preservedCustomPlans = Object.fromEntries(
+  Object.entries(object(liveConfig.plans)).filter(
+    ([key]) => !["free", "paid", "starter", "pro", "max"].includes(key),
+  ),
+);
+// Mantém planos personalizados criados pelo administrador em execuções futuras.
+const mergedPlans = { ...preservedCustomPlans, ...defaultPlans };
 const modelKeys = Object.keys(object(legacyConfig.models)).length
   ? Object.keys(object(legacyConfig.models))
   : Object.keys(object(currentConfig.models));
@@ -156,14 +188,60 @@ updates["axionSettings/private/billing"] = {
 };
 updates["axionSettings/private/mercadoPago"] = null;
 updates["axionSettings/private/schemaMigrationVersion"] = 4;
-updates["axionSettings/private/payments"] = {
+const paymentRecords = {
   ...object(object(object(liveRoot.axionServer).private).payments),
   ...object(livePrivate.payments),
 };
-updates["axionSettings/private/paymentOrders"] = {
-  ...object(object(object(liveRoot.axionServer).private).paymentOrders),
-  ...object(livePrivate.paymentOrders),
-};
+const pendingPayments = {};
+const pendingOrders = {};
+const paymentStats = { ...object(livePrivate.paymentStats) };
+const finalStatuses = new Set([
+  "processed",
+  "cancelled",
+  "canceled",
+  "refunded",
+  "expired",
+  "failed",
+]);
+for (const [checkoutId, rawPayment] of Object.entries(paymentRecords)) {
+  const payment = object(rawPayment);
+  const status = String(payment.status ?? "").toLowerCase();
+  const amountCents = Math.max(0, Number(payment.amountCents ?? 0));
+  if (!finalStatuses.has(status)) {
+    pendingPayments[checkoutId] = payment;
+    if (payment.orderId) pendingOrders[String(payment.orderId)] = checkoutId;
+    continue;
+  }
+  paymentStats.pendingCount = Math.max(0, Number(paymentStats.pendingCount ?? 0) - 1);
+  paymentStats.pendingAmountCents = Math.max(
+    0,
+    Number(paymentStats.pendingAmountCents ?? 0) - amountCents,
+  );
+  if (payment.activatedAt) {
+    paymentStats.approvedCount = Number(paymentStats.approvedCount ?? 0) + 1;
+    paymentStats.revenueCents = Number(paymentStats.revenueCents ?? 0) + amountCents;
+  } else if (status === "expired") {
+    paymentStats.expiredCount = Number(paymentStats.expiredCount ?? 0) + 1;
+  } else {
+    paymentStats.failedCount = Number(paymentStats.failedCount ?? 0) + 1;
+  }
+}
+paymentStats.pendingCount = Object.keys(pendingPayments).length;
+paymentStats.pendingAmountCents = Object.values(pendingPayments).reduce(
+  (sum, raw) => sum + Math.max(0, Number(object(raw).amountCents ?? 0)),
+  0,
+);
+paymentStats.createdCount = Math.max(
+  Number(paymentStats.createdCount ?? 0),
+  Number(paymentStats.approvedCount ?? 0) +
+    Number(paymentStats.expiredCount ?? 0) +
+    Number(paymentStats.failedCount ?? 0) +
+    paymentStats.pendingCount,
+);
+paymentStats.updatedAt = now;
+updates["axionSettings/private/payments"] = pendingPayments;
+updates["axionSettings/private/paymentOrders"] = pendingOrders;
+updates["axionSettings/private/paymentStats"] = paymentStats;
 updates["axionServer"] = null;
 
 const users = { ...object(importedRoot.users), ...object(liveRoot.users) };
@@ -172,19 +250,31 @@ for (const [uid, rawProfile] of Object.entries(users)) {
   const profile = object(rawProfile);
   const subscription = object(profile.subscription);
   const legacyPlan = String(profile.plan ?? subscription.planId ?? "free").toLowerCase();
-  const plan = legacyPlan === "paid" || legacyPlan === "pro" ? "paid" : "free";
+  const plan = legacyPlan === "paid" ? "pro" : mergedPlans[legacyPlan] ? legacyPlan : "free";
   const usage = object(profile.managedUsage);
-  const limit = Math.max(
+  const planConfig = object(mergedPlans[plan]);
+  const configuredLimit = Math.max(
     1,
-    Number(usage.creditLimit ?? usage.tokenLimit ?? (plan === "paid" ? 30_000 : 1_000)),
+    Number(plan === "free" ? planConfig.signup_credits : planConfig.monthly_credits),
   );
-  const used = Math.min(limit, Math.max(0, Number(usage.creditsUsed ?? usage.tokensUsed ?? 0)));
-  const reserved = Math.min(
-    limit - used,
-    Math.max(0, Number(usage.creditsReserved ?? usage.reservedTokens ?? 0)),
-  );
+  const rawUsed = Math.max(0, Number(usage.creditsUsed ?? usage.tokensUsed ?? 0));
+  const rawReserved = Math.max(0, Number(usage.creditsReserved ?? usage.reservedTokens ?? 0));
+  // Consumo acima do novo limite fica saturado no ciclo; lifetimeUsed preserva
+  // o total histórico sem conceder saldo adicional.
+  const limit = configuredLimit;
+  const used = Math.min(limit, rawUsed);
+  const reserved = Math.min(limit - used, rawReserved);
   const nextSubscription = { ...subscription };
   delete nextSubscription.planId;
+  delete nextSubscription.checkoutId;
+  delete nextSubscription.orderId;
+  if (plan === "free") {
+    nextSubscription.status = "none";
+    nextSubscription.periodStart = null;
+    nextSubscription.periodEnd = null;
+  } else if (!nextSubscription.status || nextSubscription.status === "none") {
+    nextSubscription.status = "active";
+  }
   const nextUsage = {
     ...usage,
     schemaVersion: 2,
@@ -201,6 +291,11 @@ for (const [uid, rawProfile] of Object.entries(users)) {
   updates[`users/${uid}/plan`] = plan;
   updates[`users/${uid}/subscription`] = nextSubscription;
   updates[`users/${uid}/managedUsage`] = nextUsage;
+  updates[`users/${uid}/serverLedger`] = Object.fromEntries(
+    Object.entries(object(profile.serverLedger)).filter(
+      ([, entry]) => object(entry).kind !== "subscription_payment",
+    ),
+  );
   migratedUsers += 1;
 }
 

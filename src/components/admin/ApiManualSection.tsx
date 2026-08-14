@@ -43,7 +43,7 @@ export function ApiManualSection() {
   const { data, isLoading } = useQuery({ queryKey: ["overview"], queryFn: () => fetchOverview() });
   const apiUrl = data?.apiEndpoint?.replace(/\/+$/, "") || "https://seu-dominio.example";
   const firebaseConfig = `{\n  "endpoint": "${apiUrl}",\n  "online": true\n}`;
-  const checkoutExample = `POST ${apiUrl}/v1/payments/checkout\nAuthorization: Bearer <FIREBASE_ID_TOKEN>\nContent-Type: application/json\n\n{\n  "planId": "paid"\n}`;
+  const checkoutExample = `POST ${apiUrl}/v1/payments/checkout\nAuthorization: Bearer <FIREBASE_ID_TOKEN>\nContent-Type: application/json\n\n{\n  "planId": "starter"\n}`;
   const androidExample = `// 1. Leia config/api do Firebase Realtime Database.\nFirebaseDatabase.getInstance(BuildConfig.FIREBASE_DATABASE_URL)\n    .getReference("config/api")\n    .addValueEventListener(new ValueEventListener() {\n      @Override public void onDataChange(DataSnapshot snapshot) {\n        String endpoint = snapshot.child("endpoint").getValue(String.class);\n        Boolean online = snapshot.child("online").getValue(Boolean.class);\n        // Use endpoint somente se online == true e iniciar com https://\n      }\n      @Override public void onCancelled(DatabaseError error) { }\n    });\n\n// 2. Obtenha o token do usuario autenticado e envie no header Bearer.\nFirebaseAuth.getInstance().getCurrentUser().getIdToken(false);`;
 
   if (isLoading) {

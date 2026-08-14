@@ -28,12 +28,12 @@ export async function getPlan(planId: string) {
 
 export function planCredits(planId: string, plan: JsonMap) {
   const key = planId === "free" ? "signup_credits" : "monthly_credits";
-  return Math.max(1, integer(plan[key], planId === "free" ? 1_000 : 25_000));
+  return Math.max(1, integer(plan[key], planId === "free" ? 500 : 4_000));
 }
 
 export function walletFromProfile(profile: JsonMap | null | undefined) {
   const usage = asMap(profile?.["managedUsage"]);
-  const limit = Math.max(1, integer(usage["creditLimit"], 1_000));
+  const limit = Math.max(1, integer(usage["creditLimit"], 500));
   const used = Math.min(limit, Math.max(0, integer(usage["creditsUsed"], 0)));
   const reserved = Math.min(
     Math.max(0, limit - used),
@@ -62,9 +62,10 @@ export async function bootstrapUser(uid: string, email?: string, displayName?: s
     if (!profile["createdAt"]) profile["createdAt"] = now;
     const subscription = asMap(profile["subscription"]);
     const requestedPlan = String(profile["plan"] ?? "free");
-    const selectedPlan = catalog[requestedPlan]?.["active"] !== false && catalog[requestedPlan]
-      ? requestedPlan
-      : "free";
+    const selectedPlan =
+      catalog[requestedPlan]?.["active"] !== false && catalog[requestedPlan]
+        ? requestedPlan
+        : "free";
     const paidExpired =
       selectedPlan !== "free" &&
       integer(subscription["periodEnd"], 0) > 0 &&
@@ -73,8 +74,13 @@ export async function bootstrapUser(uid: string, email?: string, displayName?: s
     profile["plan"] = planId;
     const usage = asMap(profile["managedUsage"]);
     const currentPlan = catalog[planId] ?? freePlan;
-    const effectiveLimit = Math.max(1, integer(usage["creditLimit"], planCredits(planId, currentPlan)));
-    const used = Math.min(effectiveLimit, Math.max(0, integer(usage["creditsUsed"], 0)));
+    const configuredLimit = planCredits(planId, currentPlan);
+    const effectiveLimit = paidExpired
+      ? configuredLimit
+      : Math.max(1, integer(usage["creditLimit"], configuredLimit));
+    const used = paidExpired
+      ? 0
+      : Math.min(effectiveLimit, Math.max(0, integer(usage["creditsUsed"], 0)));
     const reserved = Math.min(
       Math.max(0, effectiveLimit - used),
       Math.max(0, integer(usage["creditsReserved"], 0)),
@@ -94,7 +100,8 @@ export async function bootstrapUser(uid: string, email?: string, displayName?: s
     profile["managedUsage"] = usage;
     delete subscription["planId"];
     if (paidExpired) subscription["status"] = "expired";
-    else if (!subscription["status"]) subscription["status"] = "active";
+    else if (planId === "free") subscription["status"] = "none";
+    else subscription["status"] = "active";
     profile["subscription"] = subscription;
     return profile;
   });
@@ -116,14 +123,16 @@ export async function reserveCredits(input: {
   const now = Date.now();
   const minuteStart = Math.floor(now / 60_000) * 60_000;
   const dayStart = Math.floor(now / 86_400_000) * 86_400_000;
-  const rpm = Math.max(1, integer(plan["requests_per_minute"], planId === "free" ? 4 : 20));
+  const rpm = Math.max(1, integer(plan["requests_per_minute"], planId === "free" ? 3 : 8));
   const dailyLimit = Math.max(1, integer(plan["daily_credit_limit"], planCredits(planId, plan)));
   const reservationNonce = randomUUID();
   let duplicateStatus = "";
 
   const result = await rtdbTransaction<JsonMap>(`users/${input.uid}`, (current) => {
-    if (!current) throw new HttpError(404, "user_not_found", "Usuário não encontrado.");
-    const next = asMap(current);
+    // O RTDB pode iniciar a transação com cache local vazio mesmo depois de
+    // bootstrapUser confirmar o perfil no servidor. A versão confirmada é um
+    // fallback seguro; conflitos ainda são recalculados pelo próprio RTDB.
+    const next = asMap(current ?? profile);
     const requests = asMap(next["serverRequests"]);
     const existing = asMap(requests[input.requestId]);
     if (
@@ -192,9 +201,10 @@ export async function settleCredits(input: {
   outputTokens: number;
 }) {
   const now = Date.now();
+  const confirmedProfile = await rtdbGet<JsonMap>(`users/${input.uid}`);
+  if (!confirmedProfile) throw new HttpError(404, "user_not_found", "Usuário não encontrado.");
   const result = await rtdbTransaction<JsonMap>(`users/${input.uid}`, (current) => {
-    if (!current) throw new HttpError(404, "user_not_found", "Usuário não encontrado.");
-    const next = asMap(current);
+    const next = asMap(current ?? confirmedProfile);
     const requests = asMap(next["serverRequests"]);
     const request = asMap(requests[input.requestId]);
     if (request["status"] === "settled") return next;
@@ -247,9 +257,10 @@ export async function settleCredits(input: {
 
 export async function releaseCredits(uid: string, requestId: string, reason: string) {
   const now = Date.now();
+  const confirmedProfile = await rtdbGet<JsonMap>(`users/${uid}`);
+  if (!confirmedProfile) return null;
   const result = await rtdbTransaction<JsonMap>(`users/${uid}`, (current) => {
-    if (!current) return current;
-    const next = asMap(current);
+    const next = asMap(current ?? confirmedProfile);
     const requests = asMap(next["serverRequests"]);
     const request = asMap(requests[requestId]);
     if (request["status"] !== "reserved") return next;
@@ -279,8 +290,6 @@ export async function releaseCredits(uid: string, requestId: string, reason: str
 
 export async function activatePaidPlan(input: {
   uid: string;
-  checkoutId: string;
-  orderId: string;
   amountCents: number;
   planId: string;
 }) {
@@ -293,25 +302,23 @@ export async function activatePaidPlan(input: {
   const cycleDays = Math.max(1, integer(plan["cycle_days"], 30));
   const now = Date.now();
   const periodEnd = now + cycleDays * 86_400_000;
+  const confirmedProfile = await rtdbGet<JsonMap>(`users/${input.uid}`);
+  if (!confirmedProfile) throw new HttpError(404, "user_not_found", "Usuário não encontrado.");
 
   const result = await rtdbTransaction<JsonMap>(`users/${input.uid}`, (current) => {
-    if (!current) throw new HttpError(404, "user_not_found", "Usuário não encontrado.");
-    const profile = asMap(current);
+    const profile = asMap(current ?? confirmedProfile);
     const subscription = asMap(profile["subscription"]);
-    if (subscription["checkoutId"] === input.checkoutId && subscription["status"] === "active") {
-      return profile;
-    }
     profile["plan"] = input.planId;
     Object.assign(subscription, {
       status: "active",
       source: "mercado_pago",
-      checkoutId: input.checkoutId,
-      orderId: input.orderId,
       periodStart: now,
       periodEnd,
       updatedAt: now,
     });
     delete subscription["planId"];
+    delete subscription["checkoutId"];
+    delete subscription["orderId"];
     profile["subscription"] = subscription;
     const usage = asMap(profile["managedUsage"]);
     Object.assign(usage, {
@@ -326,37 +333,27 @@ export async function activatePaidPlan(input: {
       updatedAt: now,
     });
     profile["managedUsage"] = usage;
-    const ledger = asMap(profile["serverLedger"]);
-    ledger[`payment_${input.checkoutId}`] = {
-      kind: "subscription_payment",
-      amount: limit,
-      balanceAfter: limit,
-      referenceId: `mercado_pago:${input.orderId}`,
-      checkoutId: input.checkoutId,
-      amountCents: input.amountCents,
-      createdAt: now,
-    };
-    profile["serverLedger"] = ledger;
     return profile;
   });
   return result.value;
 }
 
-export async function setUserPlanByAdmin(uid: string, planId: "free" | "paid") {
+export async function setUserPlanByAdmin(uid: string, planId: string) {
   const plan = await getPlan(planId);
   const limit = planCredits(planId, plan);
   const cycleDays = Math.max(1, integer(plan["cycle_days"], 30));
   const now = Date.now();
+  const confirmedProfile = await rtdbGet<JsonMap>(`users/${uid}`);
+  if (!confirmedProfile) throw new HttpError(404, "user_not_found", "Usuário não encontrado.");
   const result = await rtdbTransaction<JsonMap>(`users/${uid}`, (current) => {
-    if (!current) throw new HttpError(404, "user_not_found", "Usuário não encontrado.");
-    const profile = asMap(current);
+    const profile = asMap(current ?? confirmedProfile);
     profile["plan"] = planId;
     const subscription = asMap(profile["subscription"]);
     Object.assign(subscription, {
-      status: "active",
+      status: planId === "free" ? "none" : "active",
       source: "admin",
       updatedAt: now,
-      ...(planId === "paid"
+      ...(planId !== "free"
         ? { periodStart: now, periodEnd: now + cycleDays * 86_400_000 }
         : { periodStart: null, periodEnd: null }),
     });
@@ -394,11 +391,12 @@ export async function adjustUserCreditsByAdmin(uid: string, delta: number) {
     throw new HttpError(400, "invalid_credit_adjustment", "Ajuste de créditos inválido.");
   }
   const now = Date.now();
+  const confirmedProfile = await rtdbGet<JsonMap>(`users/${uid}`);
+  if (!confirmedProfile) throw new HttpError(404, "user_not_found", "Usuário não encontrado.");
   const result = await rtdbTransaction<JsonMap>(`users/${uid}`, (current) => {
-    if (!current) throw new HttpError(404, "user_not_found", "Usuário não encontrado.");
-    const profile = asMap(current);
+    const profile = asMap(current ?? confirmedProfile);
     const usage = asMap(profile["managedUsage"]);
-    const limit = Math.max(1, integer(usage["creditLimit"], 1_000));
+    const limit = Math.max(1, integer(usage["creditLimit"], 500));
     const used = Math.max(0, integer(usage["creditsUsed"], 0));
     const reserved = Math.max(0, integer(usage["creditsReserved"], 0));
     const nextLimit = Math.max(1, limit + delta);

@@ -7,7 +7,7 @@ import MercadoPagoConfig, {
 } from "mercadopago";
 
 import { activatePaidPlan, getPlan } from "./accounts.server";
-import { rtdbGet, rtdbPatch, rtdbPut } from "./firebase.server";
+import { rtdbGet, rtdbPatch, rtdbTransaction } from "./firebase.server";
 import { HttpError } from "./http.server";
 
 type JsonMap = Record<string, unknown>;
@@ -135,10 +135,7 @@ export async function createPixCheckout(input: {
     updatedAt: now,
     expiresAt: now + settings.expirationMinutes * 60_000,
   };
-  await Promise.all([
-    rtdbPut(`axionSettings/private/payments/${checkoutId}`, record),
-    rtdbPut(`axionSettings/private/paymentOrders/${orderId}`, checkoutId),
-  ]);
+  await storeNewPayment(record);
   return publicCheckout(record);
 }
 
@@ -177,15 +174,18 @@ export async function synchronizeOrder(orderId: string) {
     }
     await activatePaidPlan({
       uid: current.uid,
-      checkoutId: current.checkoutId,
-      orderId: current.orderId,
       amountCents: current.amountCents,
       planId: current.planId,
     });
     updates.activatedAt = now;
   }
-  await rtdbPatch(`axionSettings/private/payments/${checkoutId}`, updates as JsonMap);
-  return { ...current, ...updates } as CheckoutRecord;
+  const finalized = { ...current, ...updates } as CheckoutRecord;
+  if (isFinal(status)) {
+    await finalizePaymentRecord(finalized);
+  } else {
+    await rtdbPatch(`axionSettings/private/payments/${checkoutId}`, updates as JsonMap);
+  }
+  return finalized;
 }
 
 export async function processMercadoPagoWebhook(request: Request) {
@@ -217,15 +217,14 @@ export async function synchronizePendingPayments() {
   const records =
     (await rtdbGet<Record<string, CheckoutRecord>>("axionSettings/private/payments")) ?? {};
   const pending = Object.values(records).filter(
-    (record) =>
-      record &&
-      record.orderId &&
-      !record.activatedAt &&
-      !isFinal(record.status),
+    (record) => record && record.orderId && !record.activatedAt && !isFinal(record.status),
   );
-  const results = await Promise.allSettled(pending.map((record) => synchronizeOrder(record.orderId)));
+  const results = await Promise.allSettled(
+    pending.map((record) => synchronizeOrder(record.orderId)),
+  );
   for (const result of results) {
-    if (result.status === "rejected") console.error("Falha ao sincronizar pagamento Pix", result.reason);
+    if (result.status === "rejected")
+      console.error("Falha ao sincronizar pagamento Pix", result.reason);
   }
   return {
     checked: pending.length,
@@ -277,4 +276,70 @@ function isApproved(status: string, detail: string) {
 
 function isFinal(status: string) {
   return ["processed", "cancelled", "canceled", "refunded", "expired", "failed"].includes(status);
+}
+
+async function storeNewPayment(record: CheckoutRecord) {
+  const now = Date.now();
+  const privatePath = "axionSettings/private";
+  const snapshot = (await rtdbGet<JsonMap>(privatePath)) ?? {};
+  const result = await rtdbTransaction<JsonMap>(privatePath, (current) => {
+    const root = { ...(current ?? snapshot) };
+    const payments = { ...((root["payments"] as JsonMap | undefined) ?? {}) };
+    if (payments[record.checkoutId]) return root;
+    const paymentOrders = { ...((root["paymentOrders"] as JsonMap | undefined) ?? {}) };
+    const stats = { ...((root["paymentStats"] as JsonMap | undefined) ?? {}) };
+    payments[record.checkoutId] = record;
+    paymentOrders[record.orderId] = record.checkoutId;
+    stats["createdCount"] = integer(stats["createdCount"], 0) + 1;
+    stats["pendingCount"] = integer(stats["pendingCount"], 0) + 1;
+    stats["pendingAmountCents"] = integer(stats["pendingAmountCents"], 0) + record.amountCents;
+    stats["updatedAt"] = now;
+    root["payments"] = payments;
+    root["paymentOrders"] = paymentOrders;
+    root["paymentStats"] = stats;
+    return root;
+  });
+  if (!result.committed) {
+    throw new HttpError(503, "payment_store_unavailable", "Não foi possível salvar o Pix.");
+  }
+}
+
+async function finalizePaymentRecord(record: CheckoutRecord) {
+  const now = Date.now();
+  const privatePath = "axionSettings/private";
+  const snapshot = (await rtdbGet<JsonMap>(privatePath)) ?? {};
+  const result = await rtdbTransaction<JsonMap>(privatePath, (current) => {
+    // O snapshot evita o primeiro callback local vazio do RTDB. Se outra
+    // execução já removeu o checkout, a repetição no servidor aborta aqui.
+    const root = { ...(current ?? snapshot) };
+    const payments = { ...((root["payments"] as JsonMap | undefined) ?? {}) };
+    const stored = payments[record.checkoutId] as CheckoutRecord | undefined;
+    if (!stored) return undefined;
+    const finalized = { ...stored, ...record };
+    const approved = Boolean(finalized.activatedAt);
+    const status = finalized.status.toLowerCase();
+    const stats = { ...((root["paymentStats"] as JsonMap | undefined) ?? {}) };
+    stats["pendingCount"] = Math.max(0, integer(stats["pendingCount"], 0) - 1);
+    stats["pendingAmountCents"] = Math.max(
+      0,
+      integer(stats["pendingAmountCents"], 0) - finalized.amountCents,
+    );
+    if (approved) {
+      stats["approvedCount"] = integer(stats["approvedCount"], 0) + 1;
+      stats["revenueCents"] = integer(stats["revenueCents"], 0) + finalized.amountCents;
+    } else if (status === "expired") {
+      stats["expiredCount"] = integer(stats["expiredCount"], 0) + 1;
+    } else {
+      stats["failedCount"] = integer(stats["failedCount"], 0) + 1;
+    }
+    stats["updatedAt"] = now;
+    delete payments[record.checkoutId];
+    const paymentOrders = { ...((root["paymentOrders"] as JsonMap | undefined) ?? {}) };
+    delete paymentOrders[record.orderId];
+    root["paymentStats"] = stats;
+    root["payments"] = payments;
+    root["paymentOrders"] = paymentOrders;
+    return root;
+  });
+  if (!result.committed) return;
 }

@@ -423,10 +423,7 @@ export async function executeManagedChat(
   if (allowedModels.length && !allowedModels.map(String).includes(modelId)) {
     throw new HttpError(403, "model_not_in_plan", "Este modelo nao esta incluido no seu plano.");
   }
-  const planMax = Math.max(
-    1,
-    integer(plan["max_output_tokens"], planId === "paid" ? 4_096 : 1_024),
-  );
+  const planMax = Math.max(1, integer(plan["max_output_tokens"], planId === "free" ? 768 : 4_096));
   const modelDefault = Math.max(
     1,
     integer(model["default_max_output_tokens"], Math.min(planMax, 2_048)),

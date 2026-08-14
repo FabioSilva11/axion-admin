@@ -6,12 +6,10 @@ import {
   Bell,
   Bot,
   CreditCard,
-  Globe,
   Layers,
   Loader2,
   LogOut,
   Settings,
-  ShieldCheck,
   Users,
 } from "lucide-react";
 
@@ -23,31 +21,18 @@ import { NotificationsPanel } from "./NotificationsPanel";
 import { PaymentsPanel } from "./PaymentsPanel";
 import { PlansPanel } from "./PlansPanel";
 import { ServerStatusBar } from "./DashboardShared";
-import { LandingAnalyticsPanel } from "./LandingAnalyticsPanel";
 import { SettingsPanel } from "./SettingsPanel";
-import { SystemPanel } from "./SystemPanel";
 import { UsersPanel } from "./UsersPanel";
 
-type Page =
-  | "analytics"
-  | "landing"
-  | "users"
-  | "ai"
-  | "plans"
-  | "payments"
-  | "notifications"
-  | "settings"
-  | "system";
+type Page = "analytics" | "users" | "ai" | "plans" | "payments" | "notifications" | "settings";
 const NAV: Array<{ id: Page; label: string; icon: typeof Users }> = [
   { id: "analytics", label: "Analytics", icon: BarChart3 },
-  { id: "landing", label: "Página / APK", icon: Globe },
   { id: "users", label: "Usuários", icon: Users },
   { id: "ai", label: "IA: Provedores e Modelos", icon: Bot },
   { id: "plans", label: "Planos", icon: Layers },
   { id: "payments", label: "Pagamentos", icon: CreditCard },
   { id: "notifications", label: "Notificações", icon: Bell },
   { id: "settings", label: "Config", icon: Settings },
-  { id: "system", label: "Sistema", icon: ShieldCheck },
 ];
 
 export function AdminShell({ username, onLogout }: { username: string; onLogout: () => void }) {
@@ -170,7 +155,5 @@ function PageContent({
   if (page === "payments") return <PaymentsPanel data={data} />;
   if (page === "notifications") return <NotificationsPanel data={data} />;
   if (page === "settings") return <SettingsPanel data={data} />;
-  if (page === "system") return <SystemPanel data={data} />;
-  if (page === "landing") return <LandingAnalyticsPanel />;
   return <AnalyticsPanel data={data} refreshing={refreshing} onRefresh={onRefresh} />;
 }

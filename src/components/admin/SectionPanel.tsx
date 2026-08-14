@@ -248,15 +248,15 @@ function RecordQuickActions({
           Tornar Free
         </button>
         <button
-          disabled={mutation.isPending || plan === "paid"}
+          disabled={mutation.isPending || plan === "pro"}
           onClick={() => {
             if (confirm("Ativar o Plano Pago e reiniciar o ciclo deste usuário?")) {
-              mutation.mutate("paid");
+              mutation.mutate("pro");
             }
           }}
           className="rounded-lg border border-primary/50 px-2.5 py-1.5 text-xs text-primary disabled:opacity-40"
         >
-          Ativar Pago
+          Ativar Pro
         </button>
         <button
           disabled={mutation.isPending}

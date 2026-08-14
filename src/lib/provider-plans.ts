@@ -37,10 +37,14 @@ export function resolveProviderPlan(
   availablePlansValue: unknown,
   modelMinPlans: readonly unknown[],
 ): ProviderPlan {
-  const explicit = String(availablePlansValue ?? "").trim().toLowerCase();
+  const explicit = String(availablePlansValue ?? "")
+    .trim()
+    .toLowerCase();
   if (explicit === "free" || explicit === "paid" || explicit === "all") return explicit;
   const hasPaidModel = modelMinPlans.some((value) => {
-    const plan = String(value ?? "").trim().toLowerCase();
+    const plan = String(value ?? "")
+      .trim()
+      .toLowerCase();
     return plan === "paid" || plan === "pro";
   });
   return hasPaidModel ? "paid" : "all";
@@ -48,7 +52,10 @@ export function resolveProviderPlan(
 
 /** Indica se um usuário de um plano pode usar um provedor com este plano. */
 export function planAllows(providerPlan: ProviderPlan, userPlan: string): boolean {
-  return providerPlan === "all" || providerPlan === userPlan.toLowerCase();
+  const normalizedUserPlan = userPlan.trim().toLowerCase();
+  if (providerPlan === "all") return true;
+  if (providerPlan === "free") return normalizedUserPlan === "free";
+  return normalizedUserPlan !== "free";
 }
 
 /** Espelho legado de plano mínimo escrito no modelo para clientes antigos. */

@@ -25,7 +25,12 @@ export const UserPlanInput = z.object({
     .min(1)
     .max(128)
     .regex(/^[A-Za-z0-9_-]+$/),
-  planId: z.enum(["free", "paid"]),
+  planId: z
+    .string()
+    .trim()
+    .min(2)
+    .max(80)
+    .regex(/^[a-z0-9_-]+$/),
 });
 
 export const CreditAdjustmentInput = z.object({
@@ -48,7 +53,12 @@ export const CheckoutSyncInput = z.object({
 });
 
 const ProviderFields = z.object({
-  providerId: z.string().trim().min(2).max(80).regex(/^[a-z0-9_-]+$/),
+  providerId: z
+    .string()
+    .trim()
+    .min(2)
+    .max(80)
+    .regex(/^[a-z0-9_-]+$/),
   name: z.string().trim().min(2).max(120),
   baseUrl: z.string().trim().url().max(2_048),
   apiKey: z.string().trim().min(1).max(4_096),
@@ -65,7 +75,12 @@ export const SaveProviderModelsInput = ProviderFields.extend({
 });
 
 export const SaveProviderInput = z.object({
-  providerId: z.string().trim().min(2).max(80).regex(/^[a-z0-9_-]+$/),
+  providerId: z
+    .string()
+    .trim()
+    .min(2)
+    .max(80)
+    .regex(/^[a-z0-9_-]+$/),
   name: z.string().trim().min(2).max(120),
   baseUrl: z.string().trim().url().max(2_048),
   apiKey: z.string().trim().max(4_096),
@@ -74,7 +89,12 @@ export const SaveProviderInput = z.object({
 });
 
 export const ProviderDeleteInput = z.object({
-  providerId: z.string().trim().min(2).max(80).regex(/^[a-z0-9_-]+$/),
+  providerId: z
+    .string()
+    .trim()
+    .min(2)
+    .max(80)
+    .regex(/^[a-z0-9_-]+$/),
 });
 
 export const ProviderModelImportInput = ProviderDeleteInput.extend({
