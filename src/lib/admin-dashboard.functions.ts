@@ -141,6 +141,15 @@ export const getAdminDashboard = createServerFn({ method: "GET" }).handler(async
   const paymentsObject = paymentsRaw ?? {};
   const paymentStats = paymentStatsRaw ?? {};
   const now = Date.now();
+  const paymentsConfigured = Boolean(
+    process.env["MERCADO_PAGO_ACCESS_TOKEN"]?.trim() &&
+    process.env["MERCADO_PAGO_WEBHOOK_SECRET"]?.trim(),
+  );
+  const paymentsMode = paymentsConfigured
+    ? process.env["MERCADO_PAGO_MODE"]?.trim().toLowerCase() === "production"
+      ? "Produção configurada"
+      : "Sandbox configurado"
+    : "Credenciais ausentes";
 
   const plans = Object.entries(plansObject).map(([key, value]) => ({
     id: text(value["id"], key),
@@ -368,6 +377,8 @@ export const getAdminDashboard = createServerFn({ method: "GET" }).handler(async
       },
       payments: {
         webhookUrl: paymentWebhookUrl(),
+        configured: paymentsConfigured,
+        mode: paymentsMode,
       },
       api: { endpoint: text(api?.["endpoint"]), online: bool(api?.["online"]) },
       proxy: { endpoint: text(proxy?.["endpoint"]), online: bool(proxy?.["online"]) },
