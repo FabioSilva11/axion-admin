@@ -11,6 +11,8 @@ startPaymentSynchronizer();
 // The Android app observes config/api, so an endpoint change is delivered without an APK update.
 const publicBaseUrl = (process.env["PUBLIC_BASE_URL"] ?? "").trim().replace(/\/+$/, "");
 const hasManagedPublicBaseUrl = publicBaseUrl.startsWith("https://");
+const isVercelDeployment =
+  process.env["VERCEL"] === "1" || /^https:\/\/[^/]+\.vercel\.app$/i.test(publicBaseUrl);
 const cliProxyPublicUrl = (process.env["CLI_PROXY_PUBLIC_URL"] ?? "https://api-ia.axion-ide.online")
   .trim()
   .replace(/\/+$/, "");
@@ -20,8 +22,9 @@ if (hasManagedPublicBaseUrl) {
   const panelEndpoint = {
     endpoint: publicBaseUrl,
     online: true,
-    source: "cloudflare_named_tunnel",
-    tunnelType: "named",
+    source: isVercelDeployment ? "vercel" : "cloudflare_named_tunnel",
+    deploymentType: isVercelDeployment ? "serverless" : "persistent_node",
+    tunnelType: isVercelDeployment ? null : "named",
     updatedAt: Date.now(),
   };
 
@@ -34,18 +37,21 @@ if (hasManagedPublicBaseUrl) {
 // The CLI Proxy is exposed by the same persistent named Cloudflare Tunnel.
 // Its hostname is stable, so no Quick Tunnel URL monitor or polling script is needed.
 if (cliProxyPublicUrl.startsWith("https://")) {
-  publications.push(rtdbPatch("config/cli-proxy", {
-    endpoint: cliProxyPublicUrl,
-    online: true,
-    source: "cloudflare_named_tunnel",
-    tunnelType: "named",
-    updatedAt: Date.now(),
-  }));
+  publications.push(
+    rtdbPatch("config/cli-proxy", {
+      endpoint: cliProxyPublicUrl,
+      online: true,
+      source: "cloudflare_named_tunnel",
+      tunnelType: "named",
+      updatedAt: Date.now(),
+    }),
+  );
 }
 
 if (publications.length > 0) {
-  void Promise.all(publications)
-    .catch((error: unknown) => console.error("Falha ao publicar endpoints fixos no Firebase", error));
+  void Promise.all(publications).catch((error: unknown) =>
+    console.error("Falha ao publicar endpoints fixos no Firebase", error),
+  );
 }
 
 type ServerEntry = {
