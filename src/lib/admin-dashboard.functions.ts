@@ -3,18 +3,33 @@ import { z } from "zod";
 
 import { normalizeAvailablePlans } from "./provider-plans";
 
-const Id = z.string().trim().min(1).max(160).regex(/^[A-Za-z0-9_-]+$/);
+const Id = z
+  .string()
+  .trim()
+  .min(1)
+  .max(160)
+  .regex(/^[A-Za-z0-9_-]+$/);
 
 const UserUpdateInput = z.object({
   uid: Id,
-  planId: z.string().trim().min(1).max(80).regex(/^[a-z0-9_-]+$/),
+  planId: z
+    .string()
+    .trim()
+    .min(1)
+    .max(80)
+    .regex(/^[a-z0-9_-]+$/),
   role: z.enum(["user", "admin"]),
   blocked: z.boolean(),
   creditDelta: z.number().int().min(-10_000_000).max(10_000_000).default(0),
 });
 
 const PlanInput = z.object({
-  id: z.string().trim().min(2).max(80).regex(/^[a-z0-9_-]+$/),
+  id: z
+    .string()
+    .trim()
+    .min(2)
+    .max(80)
+    .regex(/^[a-z0-9_-]+$/),
   name: z.string().trim().min(2).max(120),
   description: z.string().trim().max(500),
   priceCents: z.number().int().min(0).max(100_000_000),
@@ -25,7 +40,11 @@ const PlanInput = z.object({
   dailyCreditLimit: z.number().int().min(0).max(1_000_000_000),
   maxOutputTokens: z.number().int().min(1).max(1_000_000),
   requestsPerMinute: z.number().int().min(1).max(100_000),
-  resetHours: z.number().int().min(1).max(24 * 365),
+  resetHours: z
+    .number()
+    .int()
+    .min(1)
+    .max(24 * 365),
   resetWeeklyDays: z.number().int().min(1).max(365),
   resetMonthlyDays: z.number().int().min(1).max(3650),
   active: z.boolean(),
@@ -43,37 +62,34 @@ const NotificationInput = z.object({
   buttonUrl: z.union([z.string().trim().url().max(2_048), z.literal("")]),
 });
 
+const AppBlockInput = z
+  .object({
+    enabled: z.boolean(),
+    title: z.string().trim().max(120),
+    body: z.string().trim().max(4_000),
+  })
+  .superRefine((value, context) => {
+    if (value.enabled && !value.title) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["title"],
+        message: "Informe o título.",
+      });
+    }
+    if (value.enabled && !value.body) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["body"],
+        message: "Informe a mensagem.",
+      });
+    }
+  });
+
 const AppSettingsInput = z.object({
   youtube: z.string().trim().max(300),
   telegram: z.union([z.string().trim().url().max(2_048), z.literal("")]),
   whatsapp: z.union([z.string().trim().url().max(2_048), z.literal("")]),
   facebook: z.union([z.string().trim().url().max(2_048), z.literal("")]),
-  googleClientId: z.string().trim().max(500),
-  versionCode: z.number().int().min(1).max(10_000_000),
-  versionName: z.string().trim().min(1).max(80),
-  changelog: z.string().trim().max(8_000),
-  downloadUrl: z.union([z.string().trim().url().max(2_048), z.literal("")]),
-  forceUpdate: z.boolean(),
-  screens: z.object({
-    store: z.boolean(),
-    videos: z.boolean(),
-    wallet: z.boolean(),
-  }),
-  smtp: z.object({
-    host: z.string().trim().max(255),
-    port: z.number().int().min(1).max(65_535),
-    username: z.string().trim().max(320),
-    password: z.string().max(1_000),
-    senderName: z.string().trim().max(160),
-    senderEmail: z.union([z.string().trim().email().max(320), z.literal("")]),
-    secure: z.boolean(),
-  }),
-});
-
-const PaymentSettingsInput = z.object({
-  accessToken: z.string().trim().max(4_096),
-  mode: z.enum(["sandbox", "production"]),
-  expirationMinutes: z.number().int().min(30).max(43_200),
 });
 
 type JsonMap = Record<string, unknown>;
@@ -86,8 +102,7 @@ const integer = (value: unknown, fallback = 0) => {
 };
 const text = (value: unknown, fallback = "") =>
   typeof value === "string" ? value : value == null ? fallback : String(value);
-const bool = (value: unknown, fallback = false) =>
-  typeof value === "boolean" ? value : fallback;
+const bool = (value: unknown, fallback = false) => (typeof value === "boolean" ? value : fallback);
 
 export const getAdminDashboard = createServerFn({ method: "GET" }).handler(async () => {
   const { requireAdmin } = await import("./admin-session.server");
@@ -97,7 +112,7 @@ export const getAdminDashboard = createServerFn({ method: "GET" }).handler(async
   const { migrateProviderPlanConfig } = await import("./provider-catalog.server");
   await migrateProviderPlanConfig();
 
-  const [usersRaw, plansRaw, modelsRaw, providersRaw, paymentsRaw, appRaw, privateConfigRaw, api, proxy] =
+  const [usersRaw, plansRaw, modelsRaw, providersRaw, paymentsRaw, appRaw, api, proxy] =
     await Promise.all([
       rtdbGet<Record<string, JsonMap>>("users"),
       rtdbGet<Record<string, JsonMap>>("config/plans"),
@@ -105,7 +120,6 @@ export const getAdminDashboard = createServerFn({ method: "GET" }).handler(async
       rtdbGet<Record<string, JsonMap>>("axionSettings/config/providers"),
       rtdbGet<Record<string, JsonMap>>("axionSettings/private/payments"),
       rtdbGet<JsonMap>("config/app"),
-      rtdbGet<JsonMap>("axionSettings/private/adminConfig"),
       rtdbGet<JsonMap>("config/api"),
       rtdbGet<JsonMap>("config/cli-proxy"),
     ]);
@@ -177,10 +191,7 @@ export const getAdminDashboard = createServerFn({ method: "GET" }).handler(async
         status: text(item["status"], "unknown"),
       });
     }
-    const lastActiveAt = Math.max(
-      integer(value["lastLoginAt"]),
-      integer(usage["updatedAt"]),
-    );
+    const lastActiveAt = Math.max(integer(value["lastLoginAt"]), integer(usage["updatedAt"]));
     return {
       uid: text(value["uid"], uidKey),
       name: text(value["name"], "Sem nome"),
@@ -211,7 +222,11 @@ export const getAdminDashboard = createServerFn({ method: "GET" }).handler(async
     model.requests += 1;
     model.credits += request.chargedCredits;
     modelUsage.set(request.modelId || "desconhecido", model);
-    const provider = providerUsage.get(request.providerId) ?? { tokens: 0, requests: 0, credits: 0 };
+    const provider = providerUsage.get(request.providerId) ?? {
+      tokens: 0,
+      requests: 0,
+      credits: 0,
+    };
     provider.tokens += tokens;
     provider.requests += 1;
     provider.credits += request.chargedCredits;
@@ -260,8 +275,7 @@ export const getAdminDashboard = createServerFn({ method: "GET" }).handler(async
   const app = map(appRaw);
   const notification = map(app["notificationDialog"]);
   const settings = map(app["settings"]);
-  const privateConfig = map(privateConfigRaw);
-  const smtp = map(privateConfig["smtp"]);
+  const accessBlock = map(app["accessBlock"]);
 
   return {
     generatedAt: now,
@@ -290,7 +304,11 @@ export const getAdminDashboard = createServerFn({ method: "GET" }).handler(async
       .sort((a, b) => a.day.localeCompare(b.day))
       .slice(-30),
     modelUsage: [...modelUsage.entries()]
-      .map(([modelId, usage]) => ({ modelId, name: modelById.get(modelId)?.name ?? modelId, ...usage }))
+      .map(([modelId, usage]) => ({
+        modelId,
+        name: modelById.get(modelId)?.name ?? modelId,
+        ...usage,
+      }))
       .sort((a, b) => b.tokens - a.tokens),
     providerUsage: [...providerUsage.entries()]
       .map(([providerId, usage]) => ({
@@ -316,37 +334,37 @@ export const getAdminDashboard = createServerFn({ method: "GET" }).handler(async
         telegram: text(settings["telegram"]),
         whatsapp: text(settings["whatsapp"]),
         facebook: text(settings["facebook"]),
-        googleClientId: text(settings["googleClientId"]),
-        versionCode: integer(settings["versionCode"], 1),
-        versionName: text(settings["versionName"], "1.0.0"),
-        changelog: text(settings["changelog"]),
-        downloadUrl: text(settings["downloadUrl"]),
-        forceUpdate: bool(settings["forceUpdate"]),
-        screens: {
-          store: bool(map(settings["screens"])["store"], true),
-          videos: bool(map(settings["screens"])["videos"], true),
-          wallet: bool(map(settings["screens"])["wallet"], true),
-        },
       },
-      smtp: {
-        host: text(smtp["host"]),
-        port: integer(smtp["port"], 587),
-        username: text(smtp["username"]),
-        senderName: text(smtp["senderName"], "Axion"),
-        senderEmail: text(smtp["senderEmail"]),
-        secure: bool(smtp["secure"]),
-        passwordConfigured: Boolean(text(smtp["password"])),
+      accessBlock: {
+        enabled: bool(accessBlock["enabled"]),
+        title: text(accessBlock["title"], "Axion temporariamente indisponível"),
+        body: text(
+          accessBlock["body"],
+          "Estamos realizando uma manutenção. O acesso será liberado assim que o serviço estiver disponível.",
+        ),
+        updatedAt: integer(accessBlock["updatedAt"]),
       },
       payments: {
-        configured: Boolean(process.env["MERCADO_PAGO_ACCESS_TOKEN"]?.trim()),
-        mode: process.env["MERCADO_PAGO_MODE"]?.trim() || "sandbox",
-        expirationMinutes: integer(process.env["MERCADO_PAGO_PIX_EXPIRATION_MINUTES"], 30),
+        webhookUrl: paymentWebhookUrl(),
       },
       api: { endpoint: text(api?.["endpoint"]), online: bool(api?.["online"]) },
       proxy: { endpoint: text(proxy?.["endpoint"]), online: bool(proxy?.["online"]) },
     },
   };
 });
+
+function paymentWebhookUrl() {
+  const configuredBaseUrl = process.env["PUBLIC_BASE_URL"]?.trim().replace(/\/+$/, "");
+  const vercelBaseUrl = (
+    process.env["VERCEL_PROJECT_PRODUCTION_URL"] ??
+    process.env["VERCEL_URL"] ??
+    ""
+  )
+    .trim()
+    .replace(/\/+$/, "");
+  const baseUrl = configuredBaseUrl || (vercelBaseUrl ? `https://${vercelBaseUrl}` : "");
+  return baseUrl ? `${baseUrl}/v1/payments/webhook` : "/v1/payments/webhook";
+}
 
 export const getSystemMetrics = createServerFn({ method: "GET" }).handler(async () => {
   const { requireAdmin } = await import("./admin-session.server");
@@ -472,60 +490,24 @@ export const saveAppSettings = createServerFn({ method: "POST" })
   .validator((input: unknown) => AppSettingsInput.parse(input))
   .handler(async ({ data }) => {
     const { requireAdmin } = await import("./admin-session.server");
-    const { rtdbGet, rtdbPut } = await import("./firebase.server");
+    const { rtdbPut } = await import("./firebase.server");
     await requireAdmin();
-    const publicSettings = {
+    await rtdbPut("config/app/settings", {
       youtube: data.youtube,
       telegram: data.telegram,
       whatsapp: data.whatsapp,
       facebook: data.facebook,
-      googleClientId: data.googleClientId,
-      versionCode: data.versionCode,
-      versionName: data.versionName,
-      changelog: data.changelog,
-      downloadUrl: data.downloadUrl,
-      forceUpdate: data.forceUpdate,
-      screens: data.screens,
       updatedAt: Date.now(),
-    };
-    const smtpPath = "axionSettings/private/adminConfig/smtp";
-    const currentSmtp = (await rtdbGet<JsonMap>(smtpPath)) ?? {};
-    await Promise.all([
-      rtdbPut("config/app/settings", publicSettings),
-      rtdbPut(smtpPath, {
-        ...data.smtp,
-        password: data.smtp.password || text(currentSmtp["password"]),
-        updatedAt: Date.now(),
-      }),
-    ]);
+    });
     return { ok: true as const };
   });
 
-export const savePaymentSettings = createServerFn({ method: "POST" })
-  .validator((input: unknown) => PaymentSettingsInput.parse(input))
+export const saveAppBlockSettings = createServerFn({ method: "POST" })
+  .validator((input: unknown) => AppBlockInput.parse(input))
   .handler(async ({ data }) => {
     const { requireAdmin } = await import("./admin-session.server");
+    const { rtdbPut } = await import("./firebase.server");
     await requireAdmin();
-    const fs = await import("node:fs");
-    const path = await import("node:path");
-    const envPath = path.resolve(process.cwd(), ".env.local");
-    const current = fs.existsSync(envPath) ? fs.readFileSync(envPath, "utf8") : "";
-    const updates: Record<string, string> = {
-      MERCADO_PAGO_MODE: data.mode,
-      MERCADO_PAGO_PIX_EXPIRATION_MINUTES: String(data.expirationMinutes),
-    };
-    if (data.accessToken) updates.MERCADO_PAGO_ACCESS_TOKEN = data.accessToken;
-    let next = current;
-    for (const [key, value] of Object.entries(updates)) {
-      const pattern = new RegExp(`^${key}=.*$`, "m");
-      next = pattern.test(next)
-        ? next.replace(pattern, `${key}=${value}`)
-        : `${next.replace(/\s*$/, "")}\n${key}=${value}\n`;
-      process.env[key] = value;
-    }
-    const temporaryPath = `${envPath}.tmp`;
-    fs.writeFileSync(temporaryPath, next, { encoding: "utf8", mode: 0o600 });
-    fs.renameSync(temporaryPath, envPath);
-    fs.chmodSync(envPath, 0o600);
-    return { ok: true as const, configured: Boolean(process.env.MERCADO_PAGO_ACCESS_TOKEN) };
+    await rtdbPut("config/app/accessBlock", { ...data, updatedAt: Date.now() });
+    return { ok: true as const };
   });

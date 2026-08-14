@@ -56,7 +56,7 @@ Use `.env.example` como referência. As categorias principais são:
 
 - `ADMIN_USERNAME`, `ADMIN_PASSWORD` e `ADMIN_SESSION_SECRET`.
 - `FIREBASE_PROJECT_ID`, `FIREBASE_DATABASE_URL` e credencial Firebase Admin.
-- `MERCADO_PAGO_ACCESS_TOKEN` e opções de cobrança Pix.
+- `MERCADO_PAGO_ACCESS_TOKEN`, `MERCADO_PAGO_WEBHOOK_SECRET` e opções de cobrança Pix.
 - `PUBLIC_BASE_URL` para publicar o endereço HTTPS consumido pelo aplicativo.
 
 As credenciais de provedores de IA são dados privados do servidor e nunca devem ser incluídas no
@@ -77,6 +77,10 @@ Configure as variáveis no ambiente de produção, execute `npm ci` e `npm run b
 servidor Nitro gerado em `.output/`. `PUBLIC_BASE_URL` deve apontar para o domínio HTTPS público;
 ao iniciar, o servidor publica esse endpoint no Firebase para o Android recebê-lo sem uma nova
 versão do APK.
+
+No Mercado Pago, configure o tópico de pagamentos da API Orders para enviar notificações a
+`PUBLIC_BASE_URL/v1/payments/webhook`. O administrador exibe essa URL para cópia, mas nunca lê,
+grava ou mostra as credenciais de pagamento.
 
 ## Segurança
 

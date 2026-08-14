@@ -6,14 +6,12 @@ import {
   Bell,
   Bot,
   CreditCard,
-  FolderOpen,
   Globe,
   Layers,
   Loader2,
   LogOut,
   Settings,
   ShieldCheck,
-  Terminal,
   Users,
 } from "lucide-react";
 
@@ -25,11 +23,9 @@ import { NotificationsPanel } from "./NotificationsPanel";
 import { PaymentsPanel } from "./PaymentsPanel";
 import { PlansPanel } from "./PlansPanel";
 import { ServerStatusBar } from "./DashboardShared";
-import { FileManagerPanel } from "./FileManagerPanel";
 import { LandingAnalyticsPanel } from "./LandingAnalyticsPanel";
 import { SettingsPanel } from "./SettingsPanel";
 import { SystemPanel } from "./SystemPanel";
-import { TerminalPanel } from "./TerminalPanel";
 import { UsersPanel } from "./UsersPanel";
 
 type Page =
@@ -41,9 +37,7 @@ type Page =
   | "payments"
   | "notifications"
   | "settings"
-  | "system"
-  | "terminal"
-  | "files";
+  | "system";
 const NAV: Array<{ id: Page; label: string; icon: typeof Users }> = [
   { id: "analytics", label: "Analytics", icon: BarChart3 },
   { id: "landing", label: "Página / APK", icon: Globe },
@@ -54,8 +48,6 @@ const NAV: Array<{ id: Page; label: string; icon: typeof Users }> = [
   { id: "notifications", label: "Notificações", icon: Bell },
   { id: "settings", label: "Config", icon: Settings },
   { id: "system", label: "Sistema", icon: ShieldCheck },
-  { id: "terminal", label: "Terminal", icon: Terminal },
-  { id: "files", label: "Arquivos", icon: FolderOpen },
 ];
 
 export function AdminShell({ username, onLogout }: { username: string; onLogout: () => void }) {
@@ -179,8 +171,6 @@ function PageContent({
   if (page === "notifications") return <NotificationsPanel data={data} />;
   if (page === "settings") return <SettingsPanel data={data} />;
   if (page === "system") return <SystemPanel data={data} />;
-  if (page === "terminal") return <TerminalPanel />;
-  if (page === "files") return <FileManagerPanel />;
   if (page === "landing") return <LandingAnalyticsPanel />;
   return <AnalyticsPanel data={data} refreshing={refreshing} onRefresh={onRefresh} />;
 }

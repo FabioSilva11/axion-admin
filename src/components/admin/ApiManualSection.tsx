@@ -31,7 +31,9 @@ function CodeBlock({ title, value }: { title: string; value: string }) {
         <h3 className="text-xs font-semibold">{title}</h3>
         <CopyButton value={value} />
       </div>
-      <pre className="mono overflow-x-auto p-3 text-xs leading-relaxed text-muted-foreground">{value}</pre>
+      <pre className="mono overflow-x-auto p-3 text-xs leading-relaxed text-muted-foreground">
+        {value}
+      </pre>
     </article>
   );
 }
@@ -57,7 +59,8 @@ export function ApiManualSection() {
       <header>
         <h2 className="text-xl font-semibold tracking-tight">Manual da API</h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          Integre o app usando a URL publicada no Firebase. Nunca coloque chaves do Mercado Pago no APK.
+          Integre o app usando a URL publicada no Firebase. Nunca coloque chaves do Mercado Pago no
+          APK.
         </p>
       </header>
 
@@ -70,7 +73,8 @@ export function ApiManualSection() {
           <CopyButton value={apiUrl} />
         </div>
         <p className="mt-3 text-xs text-muted-foreground">
-          O servidor grava este valor em <code>config/api</code> no boot quando PUBLIC_BASE_URL usa HTTPS. O app deve observar esse caminho, nao fixar a URL no codigo.
+          O servidor grava este valor em <code>config/api</code> no boot quando PUBLIC_BASE_URL usa
+          HTTPS. O app deve observar esse caminho, nao fixar a URL no codigo.
         </p>
       </div>
 
@@ -93,17 +97,24 @@ export function ApiManualSection() {
       <div className="panel p-4 text-sm">
         <h3 className="font-semibold">Disponibilidade de modelos</h3>
         <p className="mt-2 text-muted-foreground">
-          A disponibilidade é controlada pelo <b>provedor</b> (plano e status ativo), não pelo modelo. O app lista provedores em <code>/v1/ai/providers</code> e, ao abrir um provedor, mostra somente os modelos ativos dele. Usuários do plano Free nunca recebem provedores exclusivos do Plano Pago, nem por chamada direta à API.
+          A disponibilidade é controlada pelo <b>provedor</b> (plano e status ativo), não pelo
+          modelo. O app lista provedores em <code>/v1/ai/providers</code> e, ao abrir um provedor,
+          mostra somente os modelos ativos dele. Usuários do plano Free nunca recebem provedores
+          exclusivos do Plano Pago, nem por chamada direta à API.
         </p>
       </div>
 
       <div className="panel p-4 text-sm">
         <h3 className="font-semibold">Resposta do Pix</h3>
         <p className="mt-2 text-muted-foreground">
-          A resposta contem <code>checkoutId</code>, <code>checkoutUrl</code>, <code>pixCopyPaste</code> e <code>qrCodeBase64</code>. Exiba o QR Code, mas nao marque o plano como pago no app.
+          A resposta contem <code>checkoutId</code>, <code>checkoutUrl</code>,{" "}
+          <code>pixCopyPaste</code> e <code>qrCodeBase64</code>. Exiba o QR Code, mas nao marque o
+          plano como pago no app.
         </p>
         <p className="mt-2 text-muted-foreground">
-          O servidor consulta o Mercado Pago automaticamente e atualiza <code>users/&#123;uid&#125;</code> no Firebase. O listener desse usuario atualiza o plano no app sem webhook e sem nova compilacao.
+          O webhook assinado do Mercado Pago valida a notificação, consulta a Order e atualiza{" "}
+          <code>users/&#123;uid&#125;</code> no Firebase. A consulta autenticada do checkout
+          continua disponível como confirmação adicional.
         </p>
       </div>
     </section>

@@ -22,6 +22,11 @@
         ".write": "auth != null && auth.token.email === 'tunnel-publisher@axion-badfa.firebaseapp.com'"
       },
       "plans": { ".read": true },
+      "app": {
+        "notificationDialog": { ".read": true, ".write": false },
+        "accessBlock": { ".read": true, ".write": false },
+        "$other": { ".read": false, ".write": false }
+      },
       "$other": { ".read": false, ".write": false }
     },
     "users": {

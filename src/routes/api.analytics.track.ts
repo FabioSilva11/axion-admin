@@ -1,9 +1,10 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { z } from "zod";
 
-import { LANDING_BASE_URL } from "@/lib/admin-files.server";
 import { noStoreJson } from "@/lib/http.server";
 import { recordLandingEvent } from "@/lib/landing-analytics.server";
+
+const LANDING_BASE_URL = process.env["LANDING_BASE_URL"] ?? "https://www.axion-ide.online";
 
 const TrackInput = z.object({
   event: z.string().trim().min(1).max(80),
