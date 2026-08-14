@@ -5,6 +5,13 @@ import { Check, Pencil, Plus, Save } from "lucide-react";
 import { toast } from "sonner";
 
 import { getAdminDashboard, saveDashboardPlan } from "@/lib/admin-dashboard.functions";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { MetricCard, Panel, SectionHeader, StatusBadge, formatCurrency } from "./DashboardShared";
 
 type Dashboard = Awaited<ReturnType<typeof getAdminDashboard>>;
@@ -86,15 +93,25 @@ export function PlansPanel({ data }: { data: Dashboard }) {
         <MetricCard label="Assinaturas ativas" value={String(data.totals.activeSubscriptions)} />
       </div>
 
-      {editing ? (
-        <PlanEditor
-          plan={editing}
-          saving={mutation.isPending}
-          onChange={setEditing}
-          onCancel={() => setEditing(null)}
-          onSave={() => mutation.mutate(editing)}
-        />
-      ) : null}
+      <Dialog open={Boolean(editing)} onOpenChange={(open) => !open && setEditing(null)}>
+        <DialogContent className="max-h-[92vh] max-w-5xl overflow-y-auto border-border bg-background">
+          <DialogHeader>
+            <DialogTitle>{editing?.id ? "Editar plano" : "Novo plano"}</DialogTitle>
+            <DialogDescription>
+              Controle valores, créditos, limites e períodos de renovação do plano.
+            </DialogDescription>
+          </DialogHeader>
+          {editing ? (
+            <PlanEditor
+              plan={editing}
+              saving={mutation.isPending}
+              onChange={setEditing}
+              onCancel={() => setEditing(null)}
+              onSave={() => mutation.mutate(editing)}
+            />
+          ) : null}
+        </DialogContent>
+      </Dialog>
 
       <div className="grid gap-3 lg:grid-cols-2">
         {data.plans.map((plan) => (
@@ -167,7 +184,7 @@ function PlanEditor({
   const number = (key: keyof Plan, value: string) =>
     set(key, Math.max(0, Number(value) || 0) as never);
   return (
-    <Panel className="border-primary/50 p-4">
+    <div>
       <div className="flex items-center justify-between">
         <div>
           <h3 className="font-bold">{plan.id ? "Editar plano" : "Novo plano"}</h3>
@@ -287,7 +304,7 @@ function PlanEditor({
           <Save className="size-4" /> Salvar plano
         </button>
       </div>
-    </Panel>
+    </div>
   );
 }
 

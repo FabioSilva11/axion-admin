@@ -400,15 +400,27 @@ export const discoverSavedProviderModels = createServerFn({ method: "POST" })
     const { requireAdmin } = await import("./admin-session.server");
     await requireAdmin();
     const { rtdbGet } = await import("./firebase.server");
-    const provider = await rtdbGet<Record<string, unknown>>(
-      `axionSettings/config/providers/${data.providerId}`,
-    );
+    const [provider, catalog] = await Promise.all([
+      rtdbGet<Record<string, unknown>>(`axionSettings/config/providers/${data.providerId}`),
+      rtdbGet<Record<string, Record<string, unknown>>>("axionSettings/config/models"),
+    ]);
     if (!provider) return { ok: false as const, error: "Provedor nao encontrado." };
     const baseUrl = String(provider["base_url"] ?? provider["baseUrl"] ?? "");
     const apiKey = String(provider["api_key"] ?? provider["apiKey"] ?? "").trim();
     if (!apiKey)
       return { ok: false as const, error: "O provedor nao possui uma API key configurada." };
-    return fetchProviderModels(baseUrl, apiKey);
+    const discovered = await fetchProviderModels(baseUrl, apiKey);
+    if (!discovered.ok) return discovered;
+    const selectedModels = Object.values(catalog ?? {})
+      .filter(
+        (model) =>
+          String(model["provider_id"] ?? model["providerId"] ?? "").trim() === data.providerId,
+      )
+      .map((model) =>
+        String(model["upstream_model"] ?? model["upstreamModel"] ?? model["name"] ?? "").trim(),
+      )
+      .filter((model) => discovered.models.includes(model));
+    return { ...discovered, selectedModels: [...new Set(selectedModels)] };
   });
 
 export const importSavedProviderModels = createServerFn({ method: "POST" })
