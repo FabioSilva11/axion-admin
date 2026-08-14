@@ -62,6 +62,13 @@ const NotificationInput = z.object({
   buttonUrl: z.union([z.string().trim().url().max(2_048), z.literal("")]),
 });
 
+const PushNotificationInput = z.object({
+  title: z.string().trim().min(1).max(120),
+  body: z.string().trim().min(1).max(1_000),
+  url: z.union([z.string().trim().url().startsWith("https://").max(2_048), z.literal("")]),
+  dryRun: z.boolean().default(false),
+});
+
 const AppBlockInput = z
   .object({
     enabled: z.boolean(),
@@ -517,6 +524,49 @@ export const saveNotificationSettings = createServerFn({ method: "POST" })
       updatedAt: Date.now(),
     });
     return { ok: true as const, revision };
+  });
+
+export const sendPushNotification = createServerFn({ method: "POST" })
+  .validator((input: unknown) => PushNotificationInput.parse(input))
+  .handler(async ({ data }) => {
+    const { requireAdmin } = await import("./admin-session.server");
+    const { getFirebaseAdminApp, rtdbPut } = await import("./firebase.server");
+    const { getMessaging } = await import("firebase-admin/messaging");
+    const adminUser = await requireAdmin();
+    const sentAt = Date.now();
+    const messageId = await getMessaging(getFirebaseAdminApp()).send(
+      {
+        topic: "axion_all",
+        data: {
+          title: data.title,
+          body: data.body,
+          url: data.url,
+          sentAt: String(sentAt),
+        },
+        android: {
+          priority: "high",
+          ttl: 24 * 60 * 60 * 1_000,
+        },
+      },
+      data.dryRun,
+    );
+
+    if (!data.dryRun) {
+      // O envio já ocorreu; uma falha apenas no histórico não deve induzir o
+      // administrador a reenviar a mesma notificação para todos os aparelhos.
+      void rtdbPut(`config/app/pushHistory/${sentAt}`, {
+        title: data.title,
+        body: data.body,
+        url: data.url,
+        topic: "axion_all",
+        messageId,
+        sentAt,
+        sentBy: adminUser,
+      }).catch((error: unknown) => {
+        console.error("Push enviado, mas o histórico não pôde ser salvo", error);
+      });
+    }
+    return { ok: true as const, dryRun: data.dryRun, messageId };
   });
 
 export const saveAppSettings = createServerFn({ method: "POST" })
