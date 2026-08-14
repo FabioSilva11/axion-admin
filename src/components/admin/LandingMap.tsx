@@ -1,38 +1,52 @@
-import { useEffect, useRef } from "react";
-import * as L from "leaflet";
+import { useEffect, useRef, useState } from "react";
 import "leaflet/dist/leaflet.css";
 
 export type MapPoint = { lat: number; lon: number; count: number; label: string };
 
 export function LandingMap({ points }: { points: MapPoint[] }) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const mapRef = useRef<L.Map | null>(null);
+  const leafletRef = useRef<typeof import("leaflet") | null>(null);
+  const mapRef = useRef<import("leaflet").Map | null>(null);
+  const [mapReady, setMapReady] = useState(false);
 
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
-    const map = L.map(container, {
-      center: [-15.5, -47.9],
-      zoom: 3,
-      scrollWheelZoom: false,
-      attributionControl: true,
+    let active = true;
+
+    // Leaflet reads `window` while its module is loaded, so it must only be
+    // imported in the browser. A top-level import breaks TanStack Start SSR.
+    void import("leaflet").then((L) => {
+      if (!active || !containerRef.current) return;
+      const map = L.map(containerRef.current, {
+        center: [-15.5, -47.9],
+        zoom: 3,
+        scrollWheelZoom: false,
+        attributionControl: true,
+      });
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        maxZoom: 18,
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+      }).addTo(map);
+      leafletRef.current = L;
+      mapRef.current = map;
+      setMapReady(true);
     });
-    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      maxZoom: 18,
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-    }).addTo(map);
-    mapRef.current = map;
+
     return () => {
-      map.remove();
+      active = false;
+      mapRef.current?.remove();
       mapRef.current = null;
+      leafletRef.current = null;
     };
   }, []);
 
   useEffect(() => {
     const map = mapRef.current;
-    if (!map) return;
+    const L = leafletRef.current;
+    if (!map || !L || !mapReady) return;
     const layer = L.layerGroup().addTo(map);
-    const markers: L.CircleMarker[] = [];
+    const markers: import("leaflet").CircleMarker[] = [];
     for (const point of points) {
       const radius = Math.max(4, Math.min(24, 6 + Math.log2(point.count + 1) * 5));
       const marker = L.circleMarker([point.lat, point.lon], {
@@ -56,7 +70,7 @@ export function LandingMap({ points }: { points: MapPoint[] }) {
     return () => {
       layer.remove();
     };
-  }, [points]);
+  }, [mapReady, points]);
 
   return (
     <div

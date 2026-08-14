@@ -12,6 +12,8 @@ export default defineConfig({
     // nitro/vite builds from this
     server: { entry: "server" },
   },
-  // Build para rodar em VPS com Node (não Cloudflare).
-  nitro: { preset: "node-server" },
+  // A VPS usa o servidor Node persistente. Na Vercel, Nitro precisa gerar o
+  // Build Output API em .vercel/output para que SSR, rotas e streams virem
+  // Vercel Functions em vez de um diretório estático dist/.
+  nitro: { preset: process.env.VERCEL ? "vercel" : "node-server" },
 });
