@@ -16,6 +16,12 @@ import {
   SaveModelInput,
   UserPlanInput,
 } from "./admin-schemas";
+import {
+  DEFAULT_PAID_INPUT_CREDITS_PER_1K,
+  DEFAULT_PAID_OUTPUT_CREDITS_PER_1K,
+  hasConfiguredModelPrice,
+  withDefaultPaidModelPricing,
+} from "./model-pricing";
 import { normalizeAvailablePlans, planToMinPlan } from "./provider-plans";
 
 export const adminLogin = createServerFn({ method: "POST" })
@@ -160,6 +166,7 @@ export const getModelEditorData = createServerFn({ method: "GET" }).handler(asyn
         outputUsdPerMillion: Number(model["output_usd_per_million"] ?? 0),
         inputCreditsPer1k: Number(model["input_credits_per_1k"] ?? 0),
         outputCreditsPer1k: Number(model["output_credits_per_1k"] ?? 0),
+        pricingSource: String(model["pricing_source"] ?? ""),
         defaultMaxOutputTokens: Number(model["default_max_output_tokens"] ?? 4096),
         maxTokensField:
           model["max_tokens_field"] === "max_completion_tokens"
@@ -194,24 +201,42 @@ export const saveModel = createServerFn({ method: "POST" })
     const active = provider["enabled"] === true;
     const path = `axionSettings/config/models/${data.id}`;
     const existing = (await rtdbGet<Record<string, unknown>>(path)) ?? {};
-    await rtdbPut(path, {
-      ...existing,
-      id: data.id,
-      name: data.displayName,
-      display_name: data.displayName,
-      provider_id: data.providerId,
-      upstream_model: data.upstreamModel,
-      min_plan: planToMinPlan(availablePlans),
-      active,
+    const submittedPricing = {
       input_usd_per_million: data.inputUsdPerMillion,
       output_usd_per_million: data.outputUsdPerMillion,
       input_credits_per_1k: data.inputCreditsPer1k,
       output_credits_per_1k: data.outputCreditsPer1k,
-      default_max_output_tokens: data.defaultMaxOutputTokens,
-      max_tokens_field: data.maxTokensField,
-      activation_blocked_reason: active ? null : "Provedor desativado.",
-      updatedAt: Date.now(),
-    });
+    };
+    const keptAutomaticDefault =
+      existing["pricing_source"] === "default_paid" &&
+      data.inputUsdPerMillion === 0 &&
+      data.outputUsdPerMillion === 0 &&
+      data.inputCreditsPer1k === DEFAULT_PAID_INPUT_CREDITS_PER_1K &&
+      data.outputCreditsPer1k === DEFAULT_PAID_OUTPUT_CREDITS_PER_1K;
+    const nextModel = withDefaultPaidModelPricing(
+      {
+        ...existing,
+        id: data.id,
+        name: data.displayName,
+        display_name: data.displayName,
+        provider_id: data.providerId,
+        upstream_model: data.upstreamModel,
+        min_plan: planToMinPlan(availablePlans),
+        active,
+        ...submittedPricing,
+        pricing_source: hasConfiguredModelPrice(submittedPricing)
+          ? keptAutomaticDefault
+            ? "default_paid"
+            : "custom"
+          : null,
+        default_max_output_tokens: data.defaultMaxOutputTokens,
+        max_tokens_field: data.maxTokensField,
+        activation_blocked_reason: active ? null : "Provedor desativado.",
+        updatedAt: Date.now(),
+      },
+      availablePlans,
+    );
+    await rtdbPut(path, nextModel);
     await reconcileProviderPlanState();
     return { ok: true as const };
   });
@@ -445,21 +470,26 @@ export const importSavedProviderModels = createServerFn({ method: "POST" })
     for (const upstreamModel of [...new Set(data.modelIds)]) {
       const modelId = `${data.providerId}-${slugModelId(upstreamModel)}`.slice(0, 160);
       const previous = catalog?.[modelId] ?? {};
-      updates[`models/${modelId}`] = {
-        ...previous,
-        id: modelId,
-        name: String(previous["name"] ?? upstreamModel),
-        provider_id: data.providerId,
-        upstream_model: upstreamModel,
-        min_plan: planToMinPlan(availablePlans),
-        active,
-        input_usd_per_million: Number(previous["input_usd_per_million"] ?? 0),
-        output_usd_per_million: Number(previous["output_usd_per_million"] ?? 0),
-        default_max_output_tokens: Number(previous["default_max_output_tokens"] ?? 4096),
-        activation_blocked_reason: active ? null : "Provedor desativado.",
-        importedAt: Number(previous["importedAt"] ?? now),
-        updatedAt: now,
-      };
+      updates[`models/${modelId}`] = withDefaultPaidModelPricing(
+        {
+          ...previous,
+          id: modelId,
+          name: String(previous["name"] ?? upstreamModel),
+          provider_id: data.providerId,
+          upstream_model: upstreamModel,
+          min_plan: planToMinPlan(availablePlans),
+          active,
+          input_usd_per_million: Number(previous["input_usd_per_million"] ?? 0),
+          output_usd_per_million: Number(previous["output_usd_per_million"] ?? 0),
+          input_credits_per_1k: Number(previous["input_credits_per_1k"] ?? 0),
+          output_credits_per_1k: Number(previous["output_credits_per_1k"] ?? 0),
+          default_max_output_tokens: Number(previous["default_max_output_tokens"] ?? 4096),
+          activation_blocked_reason: active ? null : "Provedor desativado.",
+          importedAt: Number(previous["importedAt"] ?? now),
+          updatedAt: now,
+        },
+        availablePlans,
+      );
     }
     await rtdbPatch("axionSettings/config", updates);
     await reconcileProviderPlanState();
@@ -527,19 +557,24 @@ export const saveProviderWithModels = createServerFn({ method: "POST" })
     const minPlan = planToMinPlan(data.availablePlans);
     for (const upstreamModel of [...new Set(data.modelIds)]) {
       const modelId = `${data.providerId}-${slugModelId(upstreamModel)}`.slice(0, 160);
-      updates[`models/${modelId}`] = {
-        id: modelId,
-        name: upstreamModel,
-        provider_id: data.providerId,
-        upstream_model: upstreamModel,
-        min_plan: minPlan,
-        active: true,
-        input_usd_per_million: 0,
-        output_usd_per_million: 0,
-        default_max_output_tokens: 4096,
-        activation_blocked_reason: null,
-        importedAt: now,
-      };
+      updates[`models/${modelId}`] = withDefaultPaidModelPricing(
+        {
+          id: modelId,
+          name: upstreamModel,
+          provider_id: data.providerId,
+          upstream_model: upstreamModel,
+          min_plan: minPlan,
+          active: true,
+          input_usd_per_million: 0,
+          output_usd_per_million: 0,
+          input_credits_per_1k: 0,
+          output_credits_per_1k: 0,
+          default_max_output_tokens: 4096,
+          activation_blocked_reason: null,
+          importedAt: now,
+        },
+        data.availablePlans,
+      );
     }
     await rtdbPatch("axionSettings/config", updates);
     await reconcileProviderPlanState();
