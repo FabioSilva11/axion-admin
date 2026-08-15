@@ -18,6 +18,7 @@ import {
   planToMinPlan,
   type ProviderPlan,
 } from "./provider-plans";
+import { withDefaultPaidModelPricing } from "./model-pricing";
 
 type JsonMap = Record<string, unknown>;
 
@@ -65,16 +66,18 @@ export async function reconcileProviderPlanState() {
     if (provider && plan) {
       const minPlan = planToMinPlan(plan);
       const expectedReason = active ? null : "Provedor desativado.";
+      const pricedModel = withDefaultPaidModelPricing(model, plan);
       // RTDB não armazena `null` (a chave some); normaliza undefined como null
       // para não reescrever o registro em toda reconciliação.
       const blockedReason = model["activation_blocked_reason"] ?? null;
       const changed =
+        pricedModel !== model ||
         model["active"] !== active ||
         text(model["min_plan"], "free").toLowerCase() !== minPlan ||
         blockedReason !== expectedReason;
       if (changed) {
         modelUpdates[`models/${modelId}`] = {
-          ...model,
+          ...pricedModel,
           active,
           min_plan: minPlan,
           activation_blocked_reason: active ? null : "Provedor desativado.",
@@ -143,7 +146,10 @@ export async function reconcileProviderPlanState() {
 export async function migrateProviderPlanConfig() {
   const { rtdbGet, rtdbPatch } = await import("./firebase.server");
   const markerRaw = await rtdbGet<unknown>("axionSettings/private/planMigrationVersion");
-  if (Number(markerRaw ?? 0) >= 1) return { ok: true as const, migrated: false };
+  if (Number(markerRaw ?? 0) >= 1) {
+    const reconciled = await reconcileProviderPlanState();
+    return { ...reconciled, migrated: false as const };
+  }
 
   const [providersRaw, modelsRaw] = await Promise.all([
     rtdbGet<Record<string, JsonMap>>("axionSettings/config/providers"),

@@ -67,6 +67,12 @@ Migração dos dados antigos (idempotente, executada pelo painel):
   anterior, pois `min_plan: free` era acessível a todos);
 - modelos sem provedor válido são desativados e nunca exibidos.
 
+Ao cadastrar, importar ou mover um provedor para `available_plans: "paid"`,
+todo modelo ainda sem preço recebe automaticamente a tarifa padrão de 1
+crédito de entrada e 1 crédito de saída por 1.000 tokens. O administrador pode
+substituir esses valores no editor do modelo; modelos pagos nunca são
+publicados com todos os campos de custo zerados.
+
 Como o provedor passou a controlar também o status ativo/inativo, modelos
 antes importados como rascunho (`active: false`) passam a ficar disponíveis
 sempre que o provedor estiver ativo — não existe mais publicação individual.
